@@ -8,6 +8,7 @@ import { createPassiveViewing } from "../../platform/tizen/screensaver";
 import { byId, loadAppMarkup } from "../../test/app-markup";
 import {
   ambientBackoffStartMs,
+  ambientFadeGraceMs,
   ambientFadeMs,
   ambientMaxConsecutiveSkips,
   ambientVideoCapMs
@@ -90,9 +91,26 @@ function fixture(options: { failing?: (id: string) => boolean; noPassive?: boole
       .map((id) => byId<HTMLImageElement>(id))
       .filter((image) => image.hasAttribute("data-visible"))
       .map((image) => (image.getAttribute("src") || "").split("#")[0]);
+  // The layer fading in on top, if any.
+  const incoming = () =>
+    ["ambient-layer-a", "ambient-layer-b"]
+      .map((id) => byId<HTMLImageElement>(id))
+      .filter((image) => image.hasAttribute("data-incoming"))
+      .map((image) => (image.getAttribute("src") || "").split("#")[0]);
+
+  // The browser reports the end of the fade in progress.
+  const endFade = async () => {
+    ["ambient-layer-a", "ambient-layer-b"]
+      .map((id) => byId<HTMLImageElement>(id))
+      .filter((image) => image.hasAttribute("data-incoming"))
+      .forEach((image) => image.dispatchEvent(new Event("transitionend")));
+    await flush();
+  };
 
   return {
     counts: () => ({ created, live: live.size, revoked }),
+    endFade,
+    incoming,
     onExit,
     // What the OLED keep-awake was asked for, in order.
     keepAwake: () => keepAwake.set.mock.calls.map(([active]) => active as boolean),
@@ -140,21 +158,70 @@ describe("ambient presentation", () => {
 
     expect(byId("ambient-screen").hidden).toBe(false);
     expect(f.visible()).toEqual(["blob:a0"]);
+    // The first picture fades in from black, then settles.
+    expect(f.incoming()).toEqual(["blob:a0"]);
     expect(f.service.loadAssetViewerStillUrl).toHaveBeenCalledWith(
       expect.objectContaining({ id: "a1" })
     );
+    await f.endFade();
+    expect(f.incoming()).toEqual([]);
 
     await vi.advanceTimersByTimeAsync(10000);
-    // Fading: the outgoing and incoming pictures, nothing else.
+    // Fading: the incoming picture fades in on top while the outgoing one
+    // stays fully shown beneath it, so black never shows through mid-fade.
     expect(f.shownSources()).toEqual(["blob:a0", "blob:a1"]);
-    expect(f.visible()).toEqual(["blob:a1"]);
+    expect(f.visible()).toEqual(["blob:a0", "blob:a1"]);
+    expect(f.incoming()).toEqual(["blob:a1"]);
     expect(f.counts().live).toBeLessThanOrEqual(3);
 
-    await vi.advanceTimersByTimeAsync(ambientFadeMs);
+    await f.endFade();
     // The outgoing picture is released as soon as the fade ends.
+    expect(f.visible()).toEqual(["blob:a1"]);
+    expect(f.incoming()).toEqual([]);
     expect(f.shownSources()).toEqual(["blob:a1"]);
     expect(f.service.revokeImageUrl).toHaveBeenCalledWith(expect.stringContaining("blob:a0"));
     expect(f.counts().live).toBeLessThanOrEqual(2);
+  });
+
+  it("keeps the outgoing picture until the browser reports the fade has ended", async () => {
+    const f = fixture();
+    await screen!.start({ quiet: false, settings: settings(), source: sequenceSource() });
+    await flush();
+    await f.endFade();
+
+    await vi.advanceTimersByTimeAsync(10000);
+    // On the TV a fade can start late: its nominal length passing is not
+    // enough to take the outgoing picture away.
+    await vi.advanceTimersByTimeAsync(ambientFadeMs);
+    expect(f.visible()).toEqual(["blob:a0", "blob:a1"]);
+    expect(f.incoming()).toEqual(["blob:a1"]);
+
+    // A fade that never reports its end still finishes, a little late.
+    await vi.advanceTimersByTimeAsync(ambientFadeGraceMs);
+    expect(f.visible()).toEqual(["blob:a1"]);
+    expect(f.incoming()).toEqual([]);
+  });
+
+  it("starts a fade only once the incoming picture has decoded", async () => {
+    const f = fixture();
+    let decoded: () => void = () => undefined;
+    await screen!.start({ quiet: false, settings: settings(), source: sequenceSource() });
+    await flush();
+    await f.endFade();
+    ["ambient-layer-a", "ambient-layer-b"].forEach((id) => {
+      byId<HTMLImageElement>(id).decode = () =>
+        new Promise<void>((resolve) => {
+          decoded = resolve;
+        });
+    });
+
+    await vi.advanceTimersByTimeAsync(10000);
+    expect(f.incoming()).toEqual([]);
+    expect(f.visible()).toEqual(["blob:a0"]);
+
+    decoded();
+    await flush();
+    expect(f.incoming()).toEqual(["blob:a1"]);
   });
 
   it("shows the clock and details, and moves them on their timer", async () => {
@@ -204,6 +271,13 @@ describe("ambient presentation", () => {
     await vi.advanceTimersByTimeAsync(ambientVideoCapMs - 1);
     expect(f.visible()).toEqual(["blob:v"]);
     await vi.advanceTimersByTimeAsync(1);
+    // The next picture fades in over the video, paused on its last frame.
+    expect(f.incoming()).toEqual(["blob:a1"]);
+    expect(f.video.hidden).toBe(false);
+    expect(f.video.paused).toBe(true);
+    expect(f.video.getAttribute("src")).toBe("https://immich.example/v.mp4");
+    await f.endFade();
+    // Covered, the video is released.
     expect(f.visible()).toEqual(["blob:a1"]);
     expect(f.video.hidden).toBe(true);
     expect(f.video.getAttribute("src")).toBeNull();
@@ -219,7 +293,10 @@ describe("ambient presentation", () => {
 
     f.video.dispatchEvent(new Event("ended"));
     await flush();
+    expect(f.incoming()).toEqual(["blob:a1"]);
+    await f.endFade();
     expect(f.visible()).toEqual(["blob:a1"]);
+    expect(f.video.hidden).toBe(true);
   });
 
   it("shows a Live Photo's still without playing its motion", async () => {
@@ -242,7 +319,8 @@ describe("ambient errors", () => {
     const f = fixture({ failing: (id) => id === "a1" });
     await screen!.start({ quiet: false, settings: settings(), source: sequenceSource() });
     await flush();
-    await vi.advanceTimersByTimeAsync(10000 + ambientFadeMs);
+    await vi.advanceTimersByTimeAsync(10000);
+    await f.endFade();
 
     expect(f.visible()).toEqual(["blob:a2"]);
     expect(byId("ambient-message").hidden).toBe(true);

@@ -14,10 +14,19 @@ import type { AmbientTimers } from "./ambient-timers";
 // bounded viewer image window loads and revokes previews, and
 // media-elements.ts shows and releases them. A playlist of at most three
 // assets (the outgoing one while it fades, the current one and the next,
-// preloaded) feeds two image layers that crossfade by opacity alone. The
-// outgoing picture is cleared and its URL revoked as soon as the fade ends.
+// preloaded) feeds two image layers that crossfade by opacity alone.
+//
+// The incoming layer fades in on top (data-incoming) while the outgoing
+// picture, or a video paused on its last frame, stays fully opaque beneath
+// it. Fading both at once would let the black background show through
+// mid-fade (two half-transparent layers cover only three quarters), which
+// reads on the TV as a black frame between pictures. The outgoing picture
+// and the video are released, and the URL revoked, only once the fade ends.
 
 export const ambientFadeMs = 1500;
+// How long past its length a fade may run before it is taken as done, in
+// case the browser never reports its end.
+export const ambientFadeGraceMs = 1000;
 // The longest a video plays before ambient mode moves on.
 export const ambientVideoCapMs = 60000;
 // Failed pictures skipped in a row before ambient mode treats the source as
@@ -203,7 +212,13 @@ export function createAmbientPlayer(options: AmbientPlayerOptions): AmbientPlaye
       return;
     }
 
-    layer(front).setAttribute("data-visible", "true");
+    const first = layer(front);
+
+    void fadeIn(first, timers).then(() => {
+      if (isCurrent(expected)) {
+        first.removeAttribute("data-incoming");
+      }
+    });
     shown(asset);
   }
 
@@ -288,25 +303,37 @@ export function createAmbientPlayer(options: AmbientPlayerOptions): AmbientPlaye
       return;
     }
 
-    stopVideo();
-    layer(back).setAttribute("data-visible", "true");
-    layer(front).removeAttribute("data-visible");
+    // A video holds its last frame under the incoming picture, and is
+    // released once the picture covers it.
+    if (playingVideo) {
+      elements.video.pause();
+    }
+
+    // If the picture beneath is still fading in (a video that ended at
+    // once), it settles fully shown, under the new one.
+    layer(front).removeAttribute("data-incoming");
     const outgoing = front;
 
     front = back;
     currentIndex += 1;
-    timers.set(() => {
-      if (!isCurrent(expected)) {
-        return;
-      }
+    // The outgoing picture is taken away only once the incoming one is fully
+    // shown, as the browser reports it: on the TV a fade can start late, and
+    // ending it on a timer cut it short with a visible jump.
+    await fadeIn(layer(back), timers);
 
-      clearStill(layer(outgoing));
-      playlist = playlist.slice(currentIndex);
-      currentIndex = 0;
-      advancing = false;
-      reconcile();
-      shown(upcoming);
-    }, ambientFadeMs);
+    if (!isCurrent(expected)) {
+      return;
+    }
+
+    stopVideo();
+    layer(outgoing).removeAttribute("data-visible");
+    layer(front).removeAttribute("data-incoming");
+    clearStill(layer(outgoing));
+    playlist = playlist.slice(currentIndex);
+    currentIndex = 0;
+    advancing = false;
+    reconcile();
+    shown(upcoming);
   }
 
   function release(): void {
@@ -316,6 +343,7 @@ export function createAmbientPlayer(options: AmbientPlayerOptions): AmbientPlaye
     stopVideo();
     elements.layers.forEach((image) => {
       image.removeAttribute("data-visible");
+      image.removeAttribute("data-incoming");
       clearStill(image);
     });
     revokeAllAssetViewerImages(images, service.revokeImageUrl);
@@ -369,9 +397,61 @@ export function createAmbientPlayer(options: AmbientPlayerOptions): AmbientPlaye
   };
 }
 
-// Waits for an image to decode, so the crossfade never shows a blank layer,
-// but never for long: a slow decode is shown as it is.
-function waitForDecode(image: HTMLImageElement, timers: AmbientTimers): Promise<void> {
+// Fades `image` in above everything else on the ambient screen, resolving
+// when the fade has finished. The layer was hidden (display: none) until
+// just now, so its transparent starting style is applied before it is made
+// visible; otherwise the browser has no starting value to transition from
+// and the picture appears at once. The browser's transitionend says when
+// the fade is done; a fade that never reports (an interrupted transition)
+// is taken as done a little after its length (ambientFadeGraceMs).
+function fadeIn(image: HTMLImageElement, timers: AmbientTimers): Promise<void> {
+  image.setAttribute("data-incoming", "true");
+  void image.offsetWidth;
+  image.setAttribute("data-visible", "true");
+
+  return new Promise((resolve) => {
+    const finish = () => {
+      image.removeEventListener("transitionend", handleEnd);
+      timers.clear(timer);
+      resolve();
+    };
+    const handleEnd = (event: Event) => {
+      if (event.target === image) {
+        finish();
+      }
+    };
+    const timer = timers.set(finish, ambientFadeMs + ambientFadeGraceMs);
+
+    image.addEventListener("transitionend", handleEnd);
+  });
+}
+
+// Waits for an image to load and decode, so the crossfade never shows a
+// blank layer and doesn't stall while the TV decodes a large picture in its
+// first frames, but never for long: a slow picture is shown as it is.
+// HTMLImageElement.decode() arrived after Chromium 63 (Tizen 5.0), so those
+// TVs wait for load alone, as before.
+async function waitForDecode(image: HTMLImageElement, timers: AmbientTimers): Promise<void> {
+  await waitForLoad(image, timers);
+
+  const decodable = image as HTMLImageElement & { decode?: () => Promise<void> };
+
+  if (typeof decodable.decode !== "function" || !(image.naturalWidth > 0)) {
+    return;
+  }
+
+  await new Promise<void>((resolve) => {
+    const timer = timers.set(resolve, decodeWaitMs);
+    const finish = () => {
+      timers.clear(timer);
+      resolve();
+    };
+
+    decodable.decode!().then(finish, finish);
+  });
+}
+
+function waitForLoad(image: HTMLImageElement, timers: AmbientTimers): Promise<void> {
   if (image.complete && image.naturalWidth > 0) {
     return Promise.resolve();
   }

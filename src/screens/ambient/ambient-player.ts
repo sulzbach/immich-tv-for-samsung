@@ -37,6 +37,9 @@ export const ambientMotionEndMarginMs = 300;
 // The motion is made transparent first, showing the still at once, and
 // released this much later, while it can no longer be seen.
 export const ambientMotionReleaseMs = 300;
+// How long a Live Photo's motion may take to show its first frame before the
+// photo fades in as usual instead.
+export const ambientMotionStartWaitMs = 4000;
 // Failed pictures skipped in a row before ambient mode treats the source as
 // failing.
 export const ambientMaxConsecutiveSkips = 5;
@@ -99,6 +102,17 @@ export function createAmbientPlayer(options: AmbientPlayerOptions): AmbientPlaye
   // A Live Photo's motion is playing over its still.
   let playingMotion = false;
   let motionEndTimer: number | null = null;
+  // Whether the motion plays with its sound, re-applied once the TV has
+  // started it.
+  let motionSound = false;
+  // Called once the motion shows its first frame.
+  let onMotionShown: (() => void) | null = null;
+  // Counts what the video element has been given to play, so a release
+  // meant for an earlier motion leaves a newer one alone.
+  let videoSession = 0;
+  // The Live Photo whose motion a cut already tried, so it isn't tried again
+  // over its still.
+  let motionTriedId: string | null = null;
 
   const isCurrent = (expected: number) => running && expected === generation;
   const current = () => playlist[currentIndex];
@@ -229,12 +243,63 @@ export function createAmbientPlayer(options: AmbientPlayerOptions): AmbientPlaye
 
     const first = layer(front);
 
+    // A Live Photo with motion on starts with its motion, not a fade.
+    if (playsMotion(asset) && (await startMotion(asset))) {
+      if (!isCurrent(expected)) {
+        return;
+      }
+
+      first.setAttribute("data-visible", "true");
+      shown(asset);
+      return;
+    }
+
+    if (!isCurrent(expected)) {
+      return;
+    }
+
     void fadeIn(first, timers).then(() => {
       if (isCurrent(expected)) {
         first.removeAttribute("data-incoming");
       }
     });
     shown(asset);
+  }
+
+  function playsMotion(asset: AlbumAsset): boolean {
+    return options.livePhotoMotion && asset.type === "image" && Boolean(asset.livePhotoVideoId);
+  }
+
+  // Plays the motion and resolves once it shows its first frame (true), or
+  // when it can't, in time (false, with the motion released).
+  function startMotion(asset: AlbumAsset): Promise<boolean> {
+    motionTriedId = asset.id;
+
+    return new Promise((resolve) => {
+      let settled = false;
+      const settle = (ok: boolean) => {
+        if (settled) {
+          return;
+        }
+
+        settled = true;
+        timers.clear(timer);
+        onMotionShown = null;
+
+        if (!ok && playingMotion) {
+          stopVideo();
+        }
+
+        resolve(ok);
+      };
+      const timer = timers.set(() => settle(false), ambientMotionStartWaitMs);
+
+      onMotionShown = () => settle(true);
+
+      if (!playMotion(asset, () => settle(false))) {
+        settle(false);
+      }
+    });
   }
 
   function shown(asset: AlbumAsset): void {
@@ -256,7 +321,8 @@ export function createAmbientPlayer(options: AmbientPlayerOptions): AmbientPlaye
 
     dwellTimer = timers.set(endDwell, options.intervalMs);
 
-    if (options.livePhotoMotion && asset.type === "image" && asset.livePhotoVideoId) {
+    // A cut to the motion has already played it, or given up on it.
+    if (playsMotion(asset) && motionTriedId !== asset.id) {
       playMotion(asset);
     }
   }
@@ -265,20 +331,24 @@ export function createAmbientPlayer(options: AmbientPlayerOptions): AmbientPlaye
   // until the motion has a frame to show (as in the viewer, ADR 0005). The
   // interval runs as for any photo; the still comes back before the motion
   // ends.
-  function playMotion(asset: AlbumAsset): void {
+  function playMotion(asset: AlbumAsset, onFailed: () => void = () => undefined): boolean {
     const url = service.loadAssetPlaybackUrl(asset);
 
     if (!url) {
-      return;
+      return false;
     }
 
     const video = elements.video;
-    const stillPlaying = () => playingMotion && current()?.id === asset.id;
+    const stillPlaying = () => playingMotion && video.getAttribute("src") === url;
 
-    setSound(video, options.livePhotoSound);
+    videoSession += 1;
+    motionSound = options.livePhotoSound;
+    setSound(video, motionSound);
     video.loop = false;
     video.style.opacity = "0";
     video.addEventListener("timeupdate", handleMotionProgress);
+    video.addEventListener("loadedmetadata", applyMotionSound);
+    video.addEventListener("playing", applyMotionSound);
     video.src = url;
     video.hidden = false;
     playingMotion = true;
@@ -290,6 +360,7 @@ export function createAmbientPlayer(options: AmbientPlayerOptions): AmbientPlaye
           throw new Error("Motion could not play.");
         }
 
+        motionSound = false;
         setSound(video, false);
         return video.play();
       })
@@ -297,8 +368,20 @@ export function createAmbientPlayer(options: AmbientPlayerOptions): AmbientPlaye
         // Motion that cannot play leaves the still, as with motion off.
         if (stillPlaying()) {
           stopVideo();
+          onFailed();
         }
       });
+
+    return true;
+  }
+
+  // On the TV, the player set its own volume once it started the video, and
+  // a Live Photo was heard with the motion muted: the choice is applied
+  // again then.
+  function applyMotionSound(): void {
+    if (playingMotion) {
+      setSound(elements.video, motionSound);
+    }
   }
 
   function handleMotionProgress(): void {
@@ -311,6 +394,10 @@ export function createAmbientPlayer(options: AmbientPlayerOptions): AmbientPlaye
     }
 
     video.style.opacity = "1";
+
+    if (onMotionShown) {
+      onMotionShown();
+    }
 
     if (!(duration > 0) || !isFinite(duration)) {
       return;
@@ -339,8 +426,10 @@ export function createAmbientPlayer(options: AmbientPlayerOptions): AmbientPlaye
     video.removeEventListener("timeupdate", handleMotionProgress);
     video.style.opacity = "0";
     video.pause();
+    const session = videoSession;
+
     timers.set(() => {
-      if (!playingMotion && !playingVideo) {
+      if (session === videoSession && !playingMotion && !playingVideo) {
         stopVideo();
       }
     }, ambientMotionReleaseMs);
@@ -372,6 +461,7 @@ export function createAmbientPlayer(options: AmbientPlayerOptions): AmbientPlaye
 
     const video = elements.video;
 
+    videoSession += 1;
     video.muted = true;
     // The video stays transparent over its poster until it is showing
     // frames: shown at once, it was black, or a jump from the poster, while
@@ -406,7 +496,10 @@ export function createAmbientPlayer(options: AmbientPlayerOptions): AmbientPlaye
     playingVideo = false;
     playingMotion = false;
     clearMotionTimer();
+    onMotionShown = null;
     elements.video.removeEventListener("timeupdate", handleMotionProgress);
+    elements.video.removeEventListener("loadedmetadata", applyMotionSound);
+    elements.video.removeEventListener("playing", applyMotionSound);
     elements.video.removeEventListener("timeupdate", revealVideo);
     elements.video.removeAttribute("data-waiting");
     releaseVideo(elements.video);
@@ -436,6 +529,34 @@ export function createAmbientPlayer(options: AmbientPlayerOptions): AmbientPlaye
 
     if (!isCurrent(expected)) {
       return;
+    }
+
+    // A Live Photo with motion on cuts straight to its motion, over the
+    // picture on screen, instead of fading its still in; the still is put
+    // beneath the motion for when it ends. A video on screen needs the one
+    // video element until it is covered, so then the still fades in as usual.
+    if (playsMotion(upcoming) && !playingVideo && !playingMotion) {
+      const started = await startMotion(upcoming);
+
+      if (!isCurrent(expected)) {
+        return;
+      }
+
+      if (started) {
+        const outgoing = front;
+
+        layer(outgoing).removeAttribute("data-incoming");
+        layer(back).setAttribute("data-visible", "true");
+        layer(outgoing).removeAttribute("data-visible");
+        clearStill(layer(outgoing));
+        front = back;
+        playlist = playlist.slice(currentIndex + 1);
+        currentIndex = 0;
+        advancing = false;
+        reconcile();
+        shown(upcoming);
+        return;
+      }
     }
 
     // A video holds its last frame under the incoming picture, and is
@@ -489,6 +610,7 @@ export function createAmbientPlayer(options: AmbientPlayerOptions): AmbientPlaye
     advanceDue = false;
     advancing = false;
     fetchingNext = false;
+    motionTriedId = null;
   }
 
   // Shows the failure over a dark screen and tries again after a capped

@@ -209,6 +209,44 @@ describe("ambient presentation", () => {
     expect(f.video.getAttribute("src")).toBeNull();
   });
 
+  it("plays a video with sound when Play video sound is on", async () => {
+    const f = fixture();
+    const source = sequenceSource((i) =>
+      i === 0 ? asset("v", { durationMs: 300000, type: "video" }) : asset(`a${i}`)
+    );
+    await screen!.start({
+      quiet: false,
+      settings: settings({ includeVideos: true, videoSound: true }),
+      source
+    });
+    await flush();
+
+    expect(f.video.muted).toBe(false);
+    expect(f.video.hidden).toBe(false);
+  });
+
+  it("falls back to muted when the TV won't start a video with sound", async () => {
+    const f = fixture();
+    f.video.play = vi.fn(async () => {
+      if (!f.video.muted) {
+        throw new DOMException("Autoplay with sound is not allowed.", "NotAllowedError");
+      }
+    });
+    const source = sequenceSource((i) =>
+      i === 0 ? asset("v", { durationMs: 300000, type: "video" }) : asset(`a${i}`)
+    );
+    await screen!.start({
+      quiet: false,
+      settings: settings({ includeVideos: true, videoSound: true }),
+      source
+    });
+    await flush();
+
+    expect(f.video.play).toHaveBeenCalledTimes(2);
+    expect(f.video.muted).toBe(true);
+    expect(f.video.hidden).toBe(false);
+  });
+
   it("moves on when a video ends before the cap", async () => {
     const f = fixture();
     const source = sequenceSource((i) =>

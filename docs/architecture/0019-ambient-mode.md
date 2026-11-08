@@ -91,6 +91,7 @@ Every source has one interface, `next(): Promise<AlbumAsset | null>`, and holds 
 - **Pictures are shown whole** (`object-fit: contain`) on black, so faces at the edges are never cropped.
 - **Interval:** 10 s, 20 s, 30 s (default), 1 min, 2 min or 5 min.
 - **Videos** play muted in a single `<video>` over their poster, until they end or for at most 60 s (`ambientVideoCapMs`), then the next picture fades in.
+  - **Play video sound** (Settings → Ambient, off by default) plays them with their sound instead. The TV's volume and mute keys stay with the TV (the app doesn't register them), so they set the level without leaving ambient mode. If the TV won't start a video with sound on its own, it plays muted rather than being skipped.
 - **Overlays:**
   - a clock, on by default: the TV's local time in UK 24-hour form ("07:05");
   - photo details, off by default: the date, and the place when the photo has one, from the viewer's metadata formatting.
@@ -130,7 +131,7 @@ Every source has one interface, `next(): Promise<AlbumAsset | null>`, and holds 
 - **Controls:**
   - Source, Album (shown for Album) and Order (Shuffle or In order, shown for an album and Memories);
   - Interval, Start after idle and Stop after, using the shared drop-down (which opens on OK);
-  - Include videos, Show clock and Show photo details, using the existing On/Off pattern;
+  - Include videos, Play video sound, Show clock and Show photo details, using the existing On/Off pattern;
   - Start now.
 - **The album** comes from the album picker in a new **single-select** mode: OK chooses at once, and Back leaves the choice as it was. Settings comes back as it was left, unsaved choices included.
 - **Storage.** Everything is stored in `AppSettings.ambient`, and the settings schema moves to version 2. Version 1 files load with ambient defaults, and unknown values fall back safely.

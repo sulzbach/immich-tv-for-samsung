@@ -118,9 +118,11 @@ export function slideshowPlaysVideos(settings: AppSettings): boolean {
 }
 
 // Ambient mode's settings as they apply: with the OLED keep-awake on, it
-// shows photos only (ADR 0023).
+// shows photos only, and Live Photos as stills (ADR 0023).
 export function readEffectiveAmbientSettings(settings: AppSettings): AmbientSettings {
-  return settings.oledKeepAwake ? { ...settings.ambient, includeVideos: false } : settings.ambient;
+  return settings.oledKeepAwake
+    ? { ...settings.ambient, includeVideos: false, livePhotoMotion: false }
+    : settings.ambient;
 }
 
 // Keeps only known rails; a rail missing from stored settings, for example

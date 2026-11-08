@@ -347,6 +347,58 @@ describe("ambient presentation", () => {
     expect(f.service.loadAssetPlaybackUrl).not.toHaveBeenCalled();
     expect(f.video.hidden).toBe(true);
   });
+
+  it("plays a Live Photo's motion once, muted, over its still when it is on", async () => {
+    const f = fixture();
+    let position = 0;
+    Object.defineProperty(f.video, "currentTime", { configurable: true, get: () => position });
+    Object.defineProperty(f.video, "duration", { configurable: true, get: () => 3 });
+    await screen!.start({
+      quiet: false,
+      settings: settings({ livePhotoMotion: true }),
+      source: sequenceSource((i) => asset(`l${i}`, { livePhotoVideoId: `motion${i}` }))
+    });
+    await flush();
+
+    // The still stays in view until the motion has a frame.
+    expect(f.visible()).toEqual(["blob:l0"]);
+    expect(f.service.loadAssetPlaybackUrl).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "l0" })
+    );
+    expect(f.video.muted).toBe(true);
+    expect(f.video.loop).toBe(false);
+    expect(f.video.hidden).toBe(false);
+    expect(f.video.style.opacity).toBe("0");
+
+    position = 0.04;
+    f.video.dispatchEvent(new Event("timeupdate"));
+    expect(f.video.style.opacity).toBe("1");
+
+    // Just before its end, the still comes back, and the photo keeps its
+    // interval.
+    position = 2.9;
+    f.video.dispatchEvent(new Event("timeupdate"));
+    expect(f.video.hidden).toBe(true);
+    expect(f.video.getAttribute("src")).toBeNull();
+    expect(f.visible()).toEqual(["blob:l0"]);
+    await vi.advanceTimersByTimeAsync(9000);
+    expect(f.visible()).toEqual(["blob:l0"]);
+  });
+
+  it("returns to the still when the motion ends, without moving on", async () => {
+    const f = fixture();
+    await screen!.start({
+      quiet: false,
+      settings: settings({ livePhotoMotion: true }),
+      source: sequenceSource((i) => asset(`l${i}`, { livePhotoVideoId: `motion${i}` }))
+    });
+    await flush();
+
+    f.video.dispatchEvent(new Event("ended"));
+    await flush();
+    expect(f.video.hidden).toBe(true);
+    expect(f.visible()).toEqual(["blob:l0"]);
+  });
 });
 
 describe("ambient errors", () => {

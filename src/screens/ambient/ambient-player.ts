@@ -29,6 +29,9 @@ export const ambientFadeMs = 1500;
 export const ambientFadeGraceMs = 1000;
 // The longest a video plays before ambient mode moves on.
 export const ambientVideoCapMs = 60000;
+// A Live Photo's motion goes back to its still this close to its end, before
+// the last frame can show black (as the viewer does).
+const motionEndMarginS = 0.12;
 // Failed pictures skipped in a row before ambient mode treats the source as
 // failing.
 export const ambientMaxConsecutiveSkips = 5;
@@ -49,6 +52,8 @@ export type AmbientPlayerElements = {
 type AmbientPlayerOptions = {
   elements: AmbientPlayerElements;
   intervalMs: number;
+  // A Live Photo plays its motion once over its still (Settings > Ambient).
+  livePhotoMotion: boolean;
   // A picture is now showing (for its details).
   onShow(asset: AlbumAsset): void;
   onState(state: AmbientPlayerState): void;
@@ -84,6 +89,8 @@ export function createAmbientPlayer(options: AmbientPlayerOptions): AmbientPlaye
   let backoffMs = ambientBackoffStartMs;
   let dwellTimer: number | null = null;
   let playingVideo = false;
+  // A Live Photo's motion is playing over its still.
+  let playingMotion = false;
 
   const isCurrent = (expected: number) => running && expected === generation;
   const current = () => playlist[currentIndex];
@@ -240,6 +247,56 @@ export function createAmbientPlayer(options: AmbientPlayerOptions): AmbientPlaye
     }
 
     dwellTimer = timers.set(endDwell, options.intervalMs);
+
+    if (options.livePhotoMotion && asset.type === "image" && asset.livePhotoVideoId) {
+      playMotion(asset);
+    }
+  }
+
+  // Plays a Live Photo's motion once, muted, over its still, which stays in
+  // view until the motion has a frame to show (as in the viewer, ADR 0005).
+  // The interval runs as for any photo; the still comes back when the motion
+  // ends.
+  function playMotion(asset: AlbumAsset): void {
+    const url = service.loadAssetPlaybackUrl(asset);
+
+    if (!url) {
+      return;
+    }
+
+    const video = elements.video;
+
+    video.muted = true;
+    video.loop = false;
+    video.style.opacity = "0";
+    video.addEventListener("timeupdate", handleMotionProgress);
+    video.src = url;
+    video.hidden = false;
+    playingMotion = true;
+    video.play().catch(() => {
+      // Motion that cannot play leaves the still, as with motion off.
+      if (playingMotion && current()?.id === asset.id) {
+        stopVideo();
+      }
+    });
+  }
+
+  function handleMotionProgress(): void {
+    const video = elements.video;
+    const time = video.currentTime;
+    const duration = video.duration;
+
+    if (!playingMotion) {
+      return;
+    }
+
+    if (time > 0) {
+      video.style.opacity = "1";
+    }
+
+    if (duration > 0 && isFinite(duration) && time >= duration - motionEndMarginS) {
+      stopVideo();
+    }
   }
 
   function endDwell(): void {
@@ -293,6 +350,8 @@ export function createAmbientPlayer(options: AmbientPlayerOptions): AmbientPlaye
 
   function stopVideo(): void {
     playingVideo = false;
+    playingMotion = false;
+    elements.video.removeEventListener("timeupdate", handleMotionProgress);
     elements.video.removeEventListener("timeupdate", revealVideo);
     elements.video.removeAttribute("data-waiting");
     releaseVideo(elements.video);
@@ -391,7 +450,9 @@ export function createAmbientPlayer(options: AmbientPlayerOptions): AmbientPlaye
   }
 
   const handleVideoEnded = () => {
-    if (running && playingVideo) {
+    if (running && playingMotion) {
+      stopVideo();
+    } else if (running && playingVideo) {
       endDwell();
     }
   };

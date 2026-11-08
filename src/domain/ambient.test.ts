@@ -17,8 +17,16 @@ describe("ambient settings", () => {
       showDetails: false,
       source: "all",
       startAfterIdleMinutes: 0,
-      stopAfterHours: 0
+      stopAfterHours: 0,
+      livePhotoMotion: false
     });
+  });
+
+  it("plays Live Photo motion only when it was turned on", () => {
+    expect(normalizeAmbientSettings({ livePhotoMotion: true }).livePhotoMotion).toBe(true);
+    expect(normalizeAmbientSettings({ livePhotoMotion: 1 }).livePhotoMotion).toBe(false);
+    // Settings saved before the option existed keep Live Photos still.
+    expect(normalizeAmbientSettings({ includeVideos: true }).livePhotoMotion).toBe(false);
   });
 
   it("offers In order only for an album and Memories", () => {

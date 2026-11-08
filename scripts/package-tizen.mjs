@@ -32,16 +32,19 @@ const releaseDir = resolve(root, ".tizen", "release");
 const tizenCli =
   process.env.TIZEN_CLI || resolve(homedir(), "tizen-studio", "tools", "ide", "bin", "tizen");
 
-async function stageRuntimeFiles() {
-  await rm(stageDir, { force: true, recursive: true });
-
+async function copyRuntimeFiles(fromDir, toDir) {
   for (const file of runtimeFiles) {
-    const source = resolve(runtimeRoot, file);
-    const destination = resolve(stageDir, file);
+    const source = resolve(fromDir, file);
+    const destination = resolve(toDir, file);
 
     await mkdir(dirname(destination), { recursive: true });
     await copyFile(source, destination);
   }
+}
+
+async function stageRuntimeFiles() {
+  await rm(stageDir, { force: true, recursive: true });
+  await copyRuntimeFiles(runtimeRoot, stageDir);
 
   console.log(`Staged ${runtimeFiles.length} runtime files in ${stageDir}`);
 }
@@ -121,7 +124,12 @@ async function main() {
   loadTizenEnv(root);
   const { TIZEN_CERT_PROFILE: profile } = requireTizenEnv(["TIZEN_CERT_PROFILE"]);
 
-  await run(tizenCli, ["build-web", "--", stageDir]);
+  // `tizen build-web` is not used: dist/ is already bundled and minified, so
+  // all it would do is copy the staged files into .buildResult. It also
+  // crashes on a Tizen Studio install that has only the Web CLI (no IDE),
+  // with NoClassDefFoundError: org/eclipse/core/runtime/Plugin. Copying the
+  // same runtime files gives `tizen package` the same input on every install.
+  await copyRuntimeFiles(stageDir, buildResultDir);
   await run(tizenCli, [
     "package",
     "-t",

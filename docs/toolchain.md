@@ -60,9 +60,10 @@ The target name or serial from that command is used by the Tizen CLI install and
 From the project root:
 
 ```sh
-tizen build-web -- .
-tizen package -t wgt -s <certificate-profile> -- .buildResult
+npm run tizen:package
 ```
+
+This builds `dist/`, copies the runtime files into `.tizen/package-src/.buildResult` and signs them there with `tizen package -t wgt -s <certificate-profile>`. It does not call `tizen build-web`: the bundle is already built, and `build-web` fails on a Web CLI-only Tizen Studio install (`NoClassDefFoundError: org/eclipse/core/runtime/Plugin`).
 
 TV applications install as `.wgt` packages.
 

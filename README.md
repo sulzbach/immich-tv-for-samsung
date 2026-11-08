@@ -121,7 +121,7 @@ After installing Tizen Studio with the Web CLI and Samsung TV Extension packages
 npm run tizen:package
 ```
 
-This first builds `dist/`, then stages only the production runtime app files under `.tizen/package-src`, builds from that clean directory, signs the widget, and writes `.tizen/package-src/.buildResult/ImmichTV.wgt`.
+This first builds `dist/`, then stages only the production runtime app files under `.tizen/package-src`, copies them into `.buildResult` (no `tizen build-web` step, so a Web CLI-only Tizen Studio install is enough), signs the widget, and writes `.tizen/package-src/.buildResult/ImmichTV.wgt`.
 
 Then install and run the generated package on the TV using the connected target name from:
 

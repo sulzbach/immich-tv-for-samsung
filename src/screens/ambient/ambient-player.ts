@@ -29,14 +29,11 @@ export const ambientFadeMs = 1500;
 export const ambientFadeGraceMs = 1000;
 // The longest a video plays before ambient mode moves on.
 export const ambientVideoCapMs = 60000;
-// A Live Photo's motion goes back to its still this long before its end, so
-// its last frames, which can show black on the TV, never do. The end is
-// timed from the motion's length: timeupdate fires only every 250 ms or so,
-// too seldom to catch it.
+// A Live Photo's motion freezes this long before its end, so its last
+// frames, which can show black on the TV, never do. The end is timed from
+// the motion's length: timeupdate fires only every 250 ms or so, too seldom
+// to catch it.
 export const ambientMotionEndMarginMs = 300;
-// The motion is made transparent first, showing the still at once, and
-// released this much later, while it can no longer be seen.
-export const ambientMotionReleaseMs = 300;
 // How long a Live Photo's motion may take to show its first frame before the
 // photo fades in as usual instead.
 export const ambientMotionStartWaitMs = 4000;
@@ -107,9 +104,9 @@ export function createAmbientPlayer(options: AmbientPlayerOptions): AmbientPlaye
   let motionSound = false;
   // Called once the motion shows its first frame.
   let onMotionShown: (() => void) | null = null;
-  // Counts what the video element has been given to play, so a release
-  // meant for an earlier motion leaves a newer one alone.
-  let videoSession = 0;
+  // A Live Photo's motion has ended, frozen on its last frame, and holds the
+  // video element until the next picture covers it.
+  let frozenMotion = false;
   // The Live Photo whose motion a cut already tried, so it isn't tried again
   // over its still.
   let motionTriedId: string | null = null;
@@ -341,7 +338,6 @@ export function createAmbientPlayer(options: AmbientPlayerOptions): AmbientPlaye
     const video = elements.video;
     const stillPlaying = () => playingMotion && video.getAttribute("src") === url;
 
-    videoSession += 1;
     motionSound = options.livePhotoSound;
     setSound(video, motionSound);
     video.loop = false;
@@ -406,15 +402,16 @@ export function createAmbientPlayer(options: AmbientPlayerOptions): AmbientPlaye
     const remainingMs = (duration - time) * 1000 - ambientMotionEndMarginMs;
 
     if (remainingMs <= 0) {
-      hideMotion();
+      freezeMotion();
     } else if (motionEndTimer === null) {
-      motionEndTimer = timers.set(hideMotion, remainingMs);
+      motionEndTimer = timers.set(freezeMotion, remainingMs);
     }
   }
 
-  // Shows the still again at once, then releases the motion once it is out
-  // of sight, so the TV's video teardown never shows.
-  function hideMotion(): void {
+  // Ends the motion on its last frame, which stays until the next picture
+  // fades in over it (as a video's does). Going back to the still read as a
+  // jump: a Live Photo's still is taken from the middle of its motion.
+  function freezeMotion(): void {
     if (!playingMotion) {
       return;
     }
@@ -423,16 +420,9 @@ export function createAmbientPlayer(options: AmbientPlayerOptions): AmbientPlaye
 
     clearMotionTimer();
     playingMotion = false;
+    frozenMotion = true;
     video.removeEventListener("timeupdate", handleMotionProgress);
-    video.style.opacity = "0";
     video.pause();
-    const session = videoSession;
-
-    timers.set(() => {
-      if (session === videoSession && !playingMotion && !playingVideo) {
-        stopVideo();
-      }
-    }, ambientMotionReleaseMs);
   }
 
   function clearMotionTimer(): void {
@@ -461,7 +451,6 @@ export function createAmbientPlayer(options: AmbientPlayerOptions): AmbientPlaye
 
     const video = elements.video;
 
-    videoSession += 1;
     video.muted = true;
     // The video stays transparent over its poster until it is showing
     // frames: shown at once, it was black, or a jump from the poster, while
@@ -495,6 +484,7 @@ export function createAmbientPlayer(options: AmbientPlayerOptions): AmbientPlaye
   function stopVideo(): void {
     playingVideo = false;
     playingMotion = false;
+    frozenMotion = false;
     clearMotionTimer();
     onMotionShown = null;
     elements.video.removeEventListener("timeupdate", handleMotionProgress);
@@ -533,9 +523,10 @@ export function createAmbientPlayer(options: AmbientPlayerOptions): AmbientPlaye
 
     // A Live Photo with motion on cuts straight to its motion, over the
     // picture on screen, instead of fading its still in; the still is put
-    // beneath the motion for when it ends. A video on screen needs the one
-    // video element until it is covered, so then the still fades in as usual.
-    if (playsMotion(upcoming) && !playingVideo && !playingMotion) {
+    // beneath it. A video or a frozen motion on screen needs the one video
+    // element until it is covered, so then the still fades in as usual, and
+    // the motion plays over it.
+    if (playsMotion(upcoming) && !playingVideo && !playingMotion && !frozenMotion) {
       const started = await startMotion(upcoming);
 
       if (!isCurrent(expected)) {
@@ -631,7 +622,7 @@ export function createAmbientPlayer(options: AmbientPlayerOptions): AmbientPlaye
 
   const handleVideoEnded = () => {
     if (running && playingMotion) {
-      hideMotion();
+      freezeMotion();
     } else if (running && playingVideo) {
       endDwell();
     }

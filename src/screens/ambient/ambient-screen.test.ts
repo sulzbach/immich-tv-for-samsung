@@ -12,7 +12,6 @@ import {
   ambientFadeMs,
   ambientMaxConsecutiveSkips,
   ambientMotionEndMarginMs,
-  ambientMotionReleaseMs,
   ambientMotionStartWaitMs,
   ambientVideoCapMs
 } from "./ambient-player";
@@ -351,7 +350,7 @@ describe("ambient presentation", () => {
     expect(f.video.hidden).toBe(true);
   });
 
-  it("starts a Live Photo with its motion, not a fade, and ends on its still", async () => {
+  it("starts a Live Photo with its motion, not a fade, and freezes on its last frame", async () => {
     const f = fixture();
     let position = 0;
     Object.defineProperty(f.video, "currentTime", { configurable: true, get: () => position });
@@ -382,20 +381,28 @@ describe("ambient presentation", () => {
     expect(f.visible()).toEqual(["blob:l0"]);
     expect(f.incoming()).toEqual([]);
 
-    // Timed from its length, the still comes back before the motion's last
-    // frames, without waiting for another timeupdate.
+    // Timed from its length, it freezes before its last frames, without
+    // waiting for another timeupdate, and stays on screen.
+    const pause = vi.mocked(f.video.pause);
+    pause.mockClear();
     await vi.advanceTimersByTimeAsync(2500 - ambientMotionEndMarginMs - 1);
-    expect(f.video.style.opacity).toBe("1");
+    expect(pause).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(1);
-    expect(f.video.style.opacity).toBe("0");
-    // Out of sight, it is released a moment later.
+    expect(pause).toHaveBeenCalledTimes(1);
+    expect(f.video.style.opacity).toBe("1");
+    expect(f.video.hidden).toBe(false);
     expect(f.video.getAttribute("src")).toBe("https://immich.example/l0.mp4");
-    await vi.advanceTimersByTimeAsync(ambientMotionReleaseMs);
-    expect(f.video.hidden).toBe(true);
-    expect(f.video.getAttribute("src")).toBeNull();
-    expect(f.video.volume).toBe(1);
-    // The photo keeps its interval.
-    expect(f.visible()).toEqual(["blob:l0"]);
+
+    // At the interval, the next picture fades in over the frozen frame, which
+    // is released once covered.
+    await vi.advanceTimersByTimeAsync(10000);
+    expect(f.incoming()).toEqual(["blob:l1"]);
+    expect(f.video.hidden).toBe(false);
+    await f.endFade();
+    // Then the next Live Photo's motion loads over its still.
+    expect(f.visible()).toEqual(["blob:l1"]);
+    expect(f.video.getAttribute("src")).toBe("https://immich.example/l1.mp4");
+    expect(f.video.style.opacity).toBe("0");
   });
 
   it("cuts from the picture on screen straight to the next Live Photo's motion", async () => {
@@ -475,7 +482,7 @@ describe("ambient presentation", () => {
     expect(f.video.muted).toBe(false);
   });
 
-  it("returns to the still when the motion ends, without moving on", async () => {
+  it("freezes on the last frame when the motion ends, without moving on", async () => {
     const f = fixture();
     let position = 0;
     Object.defineProperty(f.video, "currentTime", { configurable: true, get: () => position });
@@ -491,10 +498,10 @@ describe("ambient presentation", () => {
 
     f.video.dispatchEvent(new Event("ended"));
     await flush();
-    expect(f.video.style.opacity).toBe("0");
-    await vi.advanceTimersByTimeAsync(ambientMotionReleaseMs);
-    expect(f.video.hidden).toBe(true);
+    expect(f.video.style.opacity).toBe("1");
+    expect(f.video.hidden).toBe(false);
     expect(f.visible()).toEqual(["blob:l0"]);
+    expect(f.incoming()).toEqual([]);
   });
 });
 

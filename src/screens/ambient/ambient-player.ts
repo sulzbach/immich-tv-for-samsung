@@ -262,6 +262,11 @@ export function createAmbientPlayer(options: AmbientPlayerOptions): AmbientPlaye
     const video = elements.video;
 
     video.muted = true;
+    // The video stays transparent over its poster until it is showing
+    // frames: shown at once, it was black, or a jump from the poster, while
+    // the TV started its decoder and the first data arrived.
+    video.setAttribute("data-waiting", "true");
+    video.addEventListener("timeupdate", revealVideo);
     video.src = url;
     video.hidden = false;
     playingVideo = true;
@@ -275,8 +280,21 @@ export function createAmbientPlayer(options: AmbientPlayerOptions): AmbientPlaye
     return true;
   }
 
+  // Shows the video once its playback has moved past the start, so a frame
+  // is ready to replace the poster.
+  function revealVideo(): void {
+    const video = elements.video;
+
+    if (playingVideo && video.currentTime > 0) {
+      video.removeEventListener("timeupdate", revealVideo);
+      video.removeAttribute("data-waiting");
+    }
+  }
+
   function stopVideo(): void {
     playingVideo = false;
+    elements.video.removeEventListener("timeupdate", revealVideo);
+    elements.video.removeAttribute("data-waiting");
     releaseVideo(elements.video);
   }
 

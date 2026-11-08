@@ -283,6 +283,41 @@ describe("ambient presentation", () => {
     expect(f.video.getAttribute("src")).toBeNull();
   });
 
+  it("keeps a video's poster in view until the video is showing frames", async () => {
+    const f = fixture();
+    let position = 0;
+    Object.defineProperty(f.video, "currentTime", {
+      configurable: true,
+      get: () => position,
+      set: (value: number) => {
+        position = value;
+      }
+    });
+    const source = sequenceSource((i) =>
+      i === 0 ? asset("v", { durationMs: 300000, type: "video" }) : asset(`a${i}`)
+    );
+    await screen!.start({ quiet: false, settings: settings({ includeVideos: true }), source });
+    await flush();
+
+    // Loading: the video is transparent over its poster.
+    expect(f.visible()).toEqual(["blob:v"]);
+    expect(f.video.hidden).toBe(false);
+    expect(f.video.hasAttribute("data-waiting")).toBe(true);
+    f.video.dispatchEvent(new Event("timeupdate"));
+    expect(f.video.hasAttribute("data-waiting")).toBe(true);
+
+    // Playing: it replaces the poster.
+    position = 0.04;
+    f.video.dispatchEvent(new Event("timeupdate"));
+    expect(f.video.hasAttribute("data-waiting")).toBe(false);
+
+    // Released once the next picture has faded in over it.
+    await vi.advanceTimersByTimeAsync(ambientVideoCapMs);
+    await f.endFade();
+    expect(f.video.hidden).toBe(true);
+    expect(f.video.hasAttribute("data-waiting")).toBe(false);
+  });
+
   it("moves on when a video ends before the cap", async () => {
     const f = fixture();
     const source = sequenceSource((i) =>

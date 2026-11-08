@@ -518,7 +518,7 @@ Success criterion: the television can reliably display Immich content for an ext
   - Stop after (never by default; 1 to 4 hours) ends ambient mode and lets the TV's screensaver take over.
   - Hiding the app pauses ambient mode.
 - **Long runs:** failed assets are skipped (bounded); an unreachable server shows a calm message and retries with capped backoff; no unbounded arrays, listeners, timers or object URLs.
-- **Settings → Ambient:** source, album, order, interval, include videos, play Live Photo motion, show clock, show photo details, start after idle, stop after, and Start now, persisted in `AppSettings` with a schema bump.
+- **Settings → Ambient:** source, album, order, interval, include videos, play Live Photo motion, play Live Photo sound, show clock, show photo details, start after idle, stop after, and Start now, persisted in `AppSettings` with a schema bump.
 - No new Home rail and no new left-rail destination.
 
 #### OLED screensaver note (3 November 2026)

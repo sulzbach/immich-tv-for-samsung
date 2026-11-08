@@ -11,6 +11,8 @@ import {
   ambientFadeGraceMs,
   ambientFadeMs,
   ambientMaxConsecutiveSkips,
+  ambientMotionEndMarginMs,
+  ambientMotionReleaseMs,
   ambientVideoCapMs
 } from "./ambient-player";
 import {
@@ -366,23 +368,42 @@ describe("ambient presentation", () => {
       expect.objectContaining({ id: "l0" })
     );
     expect(f.video.muted).toBe(true);
+    expect(f.video.volume).toBe(0);
     expect(f.video.loop).toBe(false);
     expect(f.video.hidden).toBe(false);
     expect(f.video.style.opacity).toBe("0");
 
-    position = 0.04;
+    position = 0.5;
     f.video.dispatchEvent(new Event("timeupdate"));
     expect(f.video.style.opacity).toBe("1");
 
-    // Just before its end, the still comes back, and the photo keeps its
-    // interval.
-    position = 2.9;
-    f.video.dispatchEvent(new Event("timeupdate"));
+    // Timed from its length, the still comes back before the motion's last
+    // frames, without waiting for another timeupdate.
+    await vi.advanceTimersByTimeAsync(2500 - ambientMotionEndMarginMs - 1);
+    expect(f.video.style.opacity).toBe("1");
+    await vi.advanceTimersByTimeAsync(1);
+    expect(f.video.style.opacity).toBe("0");
+    // Out of sight, it is released a moment later.
+    expect(f.video.getAttribute("src")).toBe("https://immich.example/l0.mp4");
+    await vi.advanceTimersByTimeAsync(ambientMotionReleaseMs);
     expect(f.video.hidden).toBe(true);
     expect(f.video.getAttribute("src")).toBeNull();
+    expect(f.video.volume).toBe(1);
+    // The photo keeps its interval.
     expect(f.visible()).toEqual(["blob:l0"]);
-    await vi.advanceTimersByTimeAsync(9000);
-    expect(f.visible()).toEqual(["blob:l0"]);
+  });
+
+  it("plays a Live Photo's sound when Play Live Photo sound is on", async () => {
+    const f = fixture();
+    await screen!.start({
+      quiet: false,
+      settings: settings({ livePhotoMotion: true, livePhotoSound: true }),
+      source: sequenceSource((i) => asset(`l${i}`, { livePhotoVideoId: `motion${i}` }))
+    });
+    await flush();
+
+    expect(f.video.muted).toBe(false);
+    expect(f.video.volume).toBe(1);
   });
 
   it("returns to the still when the motion ends, without moving on", async () => {
@@ -396,6 +417,8 @@ describe("ambient presentation", () => {
 
     f.video.dispatchEvent(new Event("ended"));
     await flush();
+    expect(f.video.style.opacity).toBe("0");
+    await vi.advanceTimersByTimeAsync(ambientMotionReleaseMs);
     expect(f.video.hidden).toBe(true);
     expect(f.visible()).toEqual(["blob:l0"]);
   });

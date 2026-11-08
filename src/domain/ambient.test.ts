@@ -18,7 +18,8 @@ describe("ambient settings", () => {
       source: "all",
       startAfterIdleMinutes: 0,
       stopAfterHours: 0,
-      livePhotoMotion: false
+      livePhotoMotion: false,
+      livePhotoSound: false
     });
   });
 
@@ -27,6 +28,8 @@ describe("ambient settings", () => {
     expect(normalizeAmbientSettings({ livePhotoMotion: 1 }).livePhotoMotion).toBe(false);
     // Settings saved before the option existed keep Live Photos still.
     expect(normalizeAmbientSettings({ includeVideos: true }).livePhotoMotion).toBe(false);
+    expect(normalizeAmbientSettings({ livePhotoSound: true }).livePhotoSound).toBe(true);
+    expect(normalizeAmbientSettings({ livePhotoMotion: true }).livePhotoSound).toBe(false);
   });
 
   it("offers In order only for an album and Memories", () => {

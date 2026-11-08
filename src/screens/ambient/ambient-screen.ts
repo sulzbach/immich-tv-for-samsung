@@ -207,6 +207,7 @@ export function mountAmbientScreen(options: AmbientScreenOptions): AmbientScreen
           elements: { layers, video },
           intervalMs: start.settings.intervalSeconds * 1000,
           livePhotoMotion: start.settings.livePhotoMotion,
+          livePhotoSound: start.settings.livePhotoSound,
           onShow(asset) {
             showDetails(asset);
           },

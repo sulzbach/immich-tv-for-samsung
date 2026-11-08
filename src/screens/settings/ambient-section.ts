@@ -43,6 +43,7 @@ export function createAmbientSection(documentRef: Document): AmbientSection {
     documentRef,
     "ambient-live-photo-motion"
   );
+  const livePhotoSound = requireElement<HTMLInputElement>(documentRef, "ambient-live-photo-sound");
   const videoChoices = [
     lockableChoice(includeVideos, requireElement(documentRef, "ambient-include-videos-hint")),
     lockableChoice(livePhotoMotion, requireElement(documentRef, "ambient-live-photo-motion-hint"))
@@ -109,6 +110,7 @@ export function createAmbientSection(documentRef: Document): AmbientSection {
       includeVideos: includeVideos.checked,
       intervalSeconds: Number(interval.value()),
       livePhotoMotion: livePhotoMotion.checked,
+      livePhotoSound: livePhotoSound.checked,
       order: order.value(),
       showClock: showClock.checked,
       showDetails: showDetails.checked,
@@ -143,6 +145,7 @@ export function createAmbientSection(documentRef: Document): AmbientSection {
       stop.setValue(String(ambient.stopAfterHours));
       includeVideos.checked = ambient.includeVideos;
       livePhotoMotion.checked = ambient.livePhotoMotion;
+      livePhotoSound.checked = ambient.livePhotoSound;
       showClock.checked = ambient.showClock;
       showDetails.checked = ambient.showDetails;
       setVideosAllowed(!settings.oledKeepAwake);

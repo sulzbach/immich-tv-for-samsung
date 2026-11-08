@@ -79,7 +79,8 @@ describe("app settings store", () => {
         source: "album" as const,
         startAfterIdleMinutes: 10,
         stopAfterHours: 2,
-        livePhotoMotion: true
+        livePhotoMotion: true,
+        livePhotoSound: true
       },
       autoplayVideos: true,
       highContrast: true,

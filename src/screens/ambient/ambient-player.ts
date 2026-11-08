@@ -29,9 +29,14 @@ export const ambientFadeMs = 1500;
 export const ambientFadeGraceMs = 1000;
 // The longest a video plays before ambient mode moves on.
 export const ambientVideoCapMs = 60000;
-// A Live Photo's motion goes back to its still this close to its end, before
-// the last frame can show black (as the viewer does).
-const motionEndMarginS = 0.12;
+// A Live Photo's motion goes back to its still this long before its end, so
+// its last frames, which can show black on the TV, never do. The end is
+// timed from the motion's length: timeupdate fires only every 250 ms or so,
+// too seldom to catch it.
+export const ambientMotionEndMarginMs = 300;
+// The motion is made transparent first, showing the still at once, and
+// released this much later, while it can no longer be seen.
+export const ambientMotionReleaseMs = 300;
 // Failed pictures skipped in a row before ambient mode treats the source as
 // failing.
 export const ambientMaxConsecutiveSkips = 5;
@@ -54,6 +59,8 @@ type AmbientPlayerOptions = {
   intervalMs: number;
   // A Live Photo plays its motion once over its still (Settings > Ambient).
   livePhotoMotion: boolean;
+  // ...with its sound; muted otherwise.
+  livePhotoSound: boolean;
   // A picture is now showing (for its details).
   onShow(asset: AlbumAsset): void;
   onState(state: AmbientPlayerState): void;
@@ -91,6 +98,7 @@ export function createAmbientPlayer(options: AmbientPlayerOptions): AmbientPlaye
   let playingVideo = false;
   // A Live Photo's motion is playing over its still.
   let playingMotion = false;
+  let motionEndTimer: number | null = null;
 
   const isCurrent = (expected: number) => running && expected === generation;
   const current = () => playlist[currentIndex];
@@ -253,9 +261,9 @@ export function createAmbientPlayer(options: AmbientPlayerOptions): AmbientPlaye
     }
   }
 
-  // Plays a Live Photo's motion once, muted, over its still, which stays in
-  // view until the motion has a frame to show (as in the viewer, ADR 0005).
-  // The interval runs as for any photo; the still comes back when the motion
+  // Plays a Live Photo's motion once over its still, which stays in view
+  // until the motion has a frame to show (as in the viewer, ADR 0005). The
+  // interval runs as for any photo; the still comes back before the motion
   // ends.
   function playMotion(asset: AlbumAsset): void {
     const url = service.loadAssetPlaybackUrl(asset);
@@ -265,20 +273,32 @@ export function createAmbientPlayer(options: AmbientPlayerOptions): AmbientPlaye
     }
 
     const video = elements.video;
+    const stillPlaying = () => playingMotion && current()?.id === asset.id;
 
-    video.muted = true;
+    setSound(video, options.livePhotoSound);
     video.loop = false;
     video.style.opacity = "0";
     video.addEventListener("timeupdate", handleMotionProgress);
     video.src = url;
     video.hidden = false;
     playingMotion = true;
-    video.play().catch(() => {
-      // Motion that cannot play leaves the still, as with motion off.
-      if (playingMotion && current()?.id === asset.id) {
-        stopVideo();
-      }
-    });
+    video
+      .play()
+      .catch(() => {
+        // A TV that won't start it with sound on its own may start it muted.
+        if (!stillPlaying() || video.muted) {
+          throw new Error("Motion could not play.");
+        }
+
+        setSound(video, false);
+        return video.play();
+      })
+      .catch(() => {
+        // Motion that cannot play leaves the still, as with motion off.
+        if (stillPlaying()) {
+          stopVideo();
+        }
+      });
   }
 
   function handleMotionProgress(): void {
@@ -286,16 +306,50 @@ export function createAmbientPlayer(options: AmbientPlayerOptions): AmbientPlaye
     const time = video.currentTime;
     const duration = video.duration;
 
+    if (!playingMotion || !(time > 0)) {
+      return;
+    }
+
+    video.style.opacity = "1";
+
+    if (!(duration > 0) || !isFinite(duration)) {
+      return;
+    }
+
+    const remainingMs = (duration - time) * 1000 - ambientMotionEndMarginMs;
+
+    if (remainingMs <= 0) {
+      hideMotion();
+    } else if (motionEndTimer === null) {
+      motionEndTimer = timers.set(hideMotion, remainingMs);
+    }
+  }
+
+  // Shows the still again at once, then releases the motion once it is out
+  // of sight, so the TV's video teardown never shows.
+  function hideMotion(): void {
     if (!playingMotion) {
       return;
     }
 
-    if (time > 0) {
-      video.style.opacity = "1";
-    }
+    const video = elements.video;
 
-    if (duration > 0 && isFinite(duration) && time >= duration - motionEndMarginS) {
-      stopVideo();
+    clearMotionTimer();
+    playingMotion = false;
+    video.removeEventListener("timeupdate", handleMotionProgress);
+    video.style.opacity = "0";
+    video.pause();
+    timers.set(() => {
+      if (!playingMotion && !playingVideo) {
+        stopVideo();
+      }
+    }, ambientMotionReleaseMs);
+  }
+
+  function clearMotionTimer(): void {
+    if (motionEndTimer !== null) {
+      timers.clear(motionEndTimer);
+      motionEndTimer = null;
     }
   }
 
@@ -351,10 +405,14 @@ export function createAmbientPlayer(options: AmbientPlayerOptions): AmbientPlaye
   function stopVideo(): void {
     playingVideo = false;
     playingMotion = false;
+    clearMotionTimer();
     elements.video.removeEventListener("timeupdate", handleMotionProgress);
     elements.video.removeEventListener("timeupdate", revealVideo);
     elements.video.removeAttribute("data-waiting");
     releaseVideo(elements.video);
+    // A muted Live Photo leaves the volume at 0; the next video starts from
+    // full volume.
+    elements.video.volume = 1;
   }
 
   async function advance(): Promise<void> {
@@ -451,7 +509,7 @@ export function createAmbientPlayer(options: AmbientPlayerOptions): AmbientPlaye
 
   const handleVideoEnded = () => {
     if (running && playingMotion) {
-      stopVideo();
+      hideMotion();
     } else if (running && playingVideo) {
       endDwell();
     }
@@ -474,6 +532,13 @@ export function createAmbientPlayer(options: AmbientPlayerOptions): AmbientPlaye
       elements.video.removeEventListener("ended", handleVideoEnded);
     }
   };
+}
+
+// Sound on or off. Off sets the volume to 0 as well as muting: on the TV a
+// Live Photo's motion was heard although the video was muted.
+function setSound(video: HTMLVideoElement, on: boolean): void {
+  video.muted = !on;
+  video.volume = on ? 1 : 0;
 }
 
 // Fades `image` in above everything else on the ambient screen, resolving

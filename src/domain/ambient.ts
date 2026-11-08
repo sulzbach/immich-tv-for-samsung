@@ -14,6 +14,8 @@ export type AmbientSettings = {
   // A Live Photo plays its motion once, muted, over its still; off by
   // default.
   livePhotoMotion: boolean;
+  // ...with its sound; off (muted) by default.
+  livePhotoSound: boolean;
   // Used only where it applies (ambientOrderApplies); shuffle otherwise.
   order: AmbientOrder;
   showClock: boolean;
@@ -46,6 +48,7 @@ export const defaultAmbientSettings: AmbientSettings = {
   includeVideos: false,
   intervalSeconds: 30,
   livePhotoMotion: false,
+  livePhotoSound: false,
   order: "shuffle",
   showClock: true,
   showDetails: false,
@@ -82,6 +85,7 @@ export function normalizeAmbientSettings(value: unknown): AmbientSettings {
       defaultAmbientSettings.intervalSeconds
     ),
     livePhotoMotion: stored.livePhotoMotion === true,
+    livePhotoSound: stored.livePhotoSound === true,
     order: stored.order === "in-order" ? "in-order" : "shuffle",
     showClock: stored.showClock !== false,
     showDetails: stored.showDetails === true,

@@ -78,7 +78,10 @@ Every source has one interface, `next(): Promise<AlbumAsset | null>`, and holds 
 
 - **Repeat avoidance.** A ring of the last 200 shown asset ids (`createRecentRing`) is skipped when drawing. A draw is retried up to three times. A small source (a draw smaller than asked for, or a bucket or Memory with nothing new) repeats rather than stopping, and an empty source answers null.
 - **Media.** Photos only by default, or photos and videos. Live Photos are photos and show their still.
-  - **Play Live Photo motion** (off by default) plays a Live Photo's motion once, muted, over its still, as the viewer does (ADR 0005): the still stays in view until the motion has a frame, and comes back just before the motion's end (0.12 s), so its last frame never shows black. The photo keeps the usual interval. Motion that can't play leaves the still.
+  - **Play Live Photo motion** (off by default) plays a Live Photo's motion once over its still, as the viewer does (ADR 0005). The photo keeps the usual interval, and motion that can't play leaves the still.
+    - The still stays in view (the video at opacity 0) until the motion has a frame.
+    - The still comes back 300 ms before the motion's end (`ambientMotionEndMarginMs`), on a timer set from the motion's length once it plays: `timeupdate` fires only every 250 ms or so, and ending on it let the motion reach its last frames, which showed black on the TV. The video is made transparent first and released 300 ms later (`ambientMotionReleaseMs`), out of sight.
+  - **Play Live Photo sound** (off by default) plays the motion with its sound. Off, the motion is muted and its volume set to 0 as well: on the TV, a Live Photo's motion was heard although the video was muted. If the TV won't start it with sound, it plays muted.
 - **Partners.** The random sources may include timeline-enabled partners' photos. That matches Photos, so it is accepted. Favourites stays your own.
 
 ### Presentation (`src/screens/ambient/`)
@@ -135,7 +138,7 @@ Every source has one interface, `next(): Promise<AlbumAsset | null>`, and holds 
 - **Controls:**
   - Source, Album (shown for Album) and Order (Shuffle or In order, shown for an album and Memories);
   - Interval, Start after idle and Stop after, using the shared drop-down (which opens on OK);
-  - Include videos, Play Live Photo motion, Show clock and Show photo details, using the existing On/Off pattern;
+  - Include videos, Play Live Photo motion, Play Live Photo sound, Show clock and Show photo details, using the existing On/Off pattern;
   - Start now.
 - **The album** comes from the album picker in a new **single-select** mode: OK chooses at once, and Back leaves the choice as it was. Settings comes back as it was left, unsaved choices included.
 - **Storage.** Everything is stored in `AppSettings.ambient`, and the settings schema moves to version 2. Version 1 files load with ambient defaults, and unknown values fall back safely.

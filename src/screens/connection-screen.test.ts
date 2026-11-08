@@ -346,7 +346,7 @@ describe("Settings remote navigation and actions", () => {
     pressKey(remoteKeys.enter);
     expect(motion.checked).toBe(true);
     expect(motion.hasAttribute("aria-disabled")).toBe(false);
-    expect(hint.textContent).toBe("Each Live Photo moves once, muted, then shows its photo.");
+    expect(hint.textContent).toBe("Each Live Photo moves once, then shows its photo.");
   });
 
   it("shows Include videos locked when the OLED keep-awake was saved on", () => {
@@ -453,7 +453,7 @@ describe("Settings remote navigation and actions", () => {
 
     // Every control is reachable with Down, in order.
     const reached: string[] = [];
-    for (let step = 0; step < 8; step += 1) {
+    for (let step = 0; step < 9; step += 1) {
       pressKey(remoteKeys.down);
       reached.push(document.activeElement?.id || "");
     }
@@ -463,6 +463,7 @@ describe("Settings remote navigation and actions", () => {
       "ambient-stop",
       "ambient-include-videos",
       "ambient-live-photo-motion",
+      "ambient-live-photo-sound",
       "ambient-show-clock",
       "ambient-show-details",
       "ambient-start"

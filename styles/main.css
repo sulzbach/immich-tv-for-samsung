@@ -3141,21 +3141,36 @@ button.asset-viewer-faces[aria-pressed="true"]:focus {
   background: transparent;
 }
 
+/* Stacking, bottom to top: the current picture, the video over its poster,
+   and the incoming picture while it fades in over both. Only the incoming
+   layer animates; the one beneath stays opaque until the fade ends, so the
+   black background never shows through mid-fade. The incoming layer is
+   black behind its picture, so a portrait photo's bars fade in with it
+   instead of the outgoing picture staying visible beside it. */
 .ambient-layer {
+  z-index: 0;
   opacity: 0;
-  transition: opacity 1500ms linear;
 }
 
 .ambient-layer[data-visible] {
   opacity: 1;
 }
 
+.ambient-layer[data-incoming] {
+  z-index: 2;
+  background: #000000;
+  transition: opacity 1500ms linear;
+  will-change: opacity;
+}
+
 .ambient-video {
+  z-index: 1;
   background: #000000;
 }
 
 .ambient-overlay {
   position: absolute;
+  z-index: 3;
   max-width: 760px;
   color: var(--text-faint);
   text-shadow: 0 2px 10px var(--ambient-text-shadow);
@@ -3206,6 +3221,7 @@ button.asset-viewer-faces[aria-pressed="true"]:focus {
 
 .ambient-message {
   position: absolute;
+  z-index: 3;
   top: 50%;
   left: 50%;
   width: 1200px;

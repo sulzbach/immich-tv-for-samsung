@@ -20,6 +20,8 @@ export type AmbientSettings = {
   startAfterIdleMinutes: number;
   // 0 is Never.
   stopAfterHours: number;
+  // Videos play with their sound; off (muted) by default.
+  videoSound: boolean;
 };
 
 export const ambientSources: AmbientSource[] = ["all", "favorites", "recent", "album", "memories"];
@@ -47,7 +49,8 @@ export const defaultAmbientSettings: AmbientSettings = {
   showDetails: false,
   source: "all",
   startAfterIdleMinutes: 0,
-  stopAfterHours: 0
+  stopAfterHours: 0,
+  videoSound: false
 };
 
 // In order is offered for an album and for Memories only.
@@ -82,7 +85,8 @@ export function normalizeAmbientSettings(value: unknown): AmbientSettings {
     showDetails: stored.showDetails === true,
     source: oneOf(stored.source, ambientSources, defaultAmbientSettings.source),
     startAfterIdleMinutes: oneOf(stored.startAfterIdleMinutes, ambientIdleOptions, 0),
-    stopAfterHours: oneOf(stored.stopAfterHours, ambientStopOptions, 0)
+    stopAfterHours: oneOf(stored.stopAfterHours, ambientStopOptions, 0),
+    videoSound: stored.videoSound === true
   };
 }
 

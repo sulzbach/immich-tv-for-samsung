@@ -309,7 +309,7 @@ describe("Settings remote navigation and actions", () => {
     pressKey(remoteKeys.enter);
     expect(includeVideos.checked).toBe(true);
     expect(includeVideos.hasAttribute("aria-disabled")).toBe(false);
-    expect(hint.textContent).toBe("Videos play muted, for up to a minute each.");
+    expect(hint.textContent).toBe("Videos play for up to a minute each.");
 
     pressKey(remoteKeys.enter);
     byId("settings-save").focus();
@@ -426,7 +426,7 @@ describe("Settings remote navigation and actions", () => {
 
     // Every control is reachable with Down, in order.
     const reached: string[] = [];
-    for (let step = 0; step < 7; step += 1) {
+    for (let step = 0; step < 8; step += 1) {
       pressKey(remoteKeys.down);
       reached.push(document.activeElement?.id || "");
     }
@@ -435,6 +435,7 @@ describe("Settings remote navigation and actions", () => {
       "ambient-idle",
       "ambient-stop",
       "ambient-include-videos",
+      "ambient-video-sound",
       "ambient-show-clock",
       "ambient-show-details",
       "ambient-start"

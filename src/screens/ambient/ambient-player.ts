@@ -338,21 +338,10 @@ export function createAmbientPlayer(options: AmbientPlayerOptions): AmbientPlaye
 
     const first = layer(front);
 
-    // A Live Photo with motion on starts with its motion, not a fade.
-    if (playsMotion(asset) && (await startMotion(asset))) {
-      if (!isCurrent(expected)) {
-        return;
-      }
-
-      first.setAttribute("data-visible", "true");
-      shown(asset);
-      return;
-    }
-
-    if (!isCurrent(expected)) {
-      return;
-    }
-
+    // The first picture always fades in, a Live Photo too, its motion then
+    // playing over its still: there is no picture on screen to wait behind,
+    // and waiting for a first motion to download and start kept the screen
+    // black for about four seconds on the TV.
     // As for every later picture, its details change once it is fully shown:
     // shown with the fade's start, they appeared over black before the
     // picture did.

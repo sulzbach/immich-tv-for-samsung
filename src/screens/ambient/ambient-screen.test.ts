@@ -422,7 +422,7 @@ describe("ambient presentation", () => {
     expect(f.video.hidden).toBe(true);
   });
 
-  it("starts a Live Photo with its motion, not a fade, and freezes on its last frame", async () => {
+  it("fades a first Live Photo in, plays its motion over it, and freezes on its last frame", async () => {
     const f = fixture();
     let position = 0;
     Object.defineProperty(f.video, "currentTime", { configurable: true, get: () => position });
@@ -434,9 +434,10 @@ describe("ambient presentation", () => {
     });
     await flush();
 
-    // Nothing fades in: the motion is loading, muted, transparent.
-    expect(f.visible()).toEqual([]);
-    expect(f.incoming()).toEqual([]);
+    // The first picture fades in like any other, without waiting for its
+    // motion, which loads over it, muted and transparent.
+    expect(f.visible()).toEqual(["blob:l0"]);
+    expect(f.incoming()).toEqual(["blob:l0"]);
     expect(f.service.loadAssetPlaybackUrl).toHaveBeenCalledWith(
       expect.objectContaining({ id: "l0" })
     );
@@ -445,7 +446,8 @@ describe("ambient presentation", () => {
     expect(f.video.loop).toBe(false);
     expect(f.video.style.opacity).toBe("0");
 
-    // Its first frame shows the motion at once, with the still beneath it.
+    // Its first frame shows the motion at once, over the still.
+    await f.endFade();
     position = 0.5;
     f.video.dispatchEvent(new Event("timeupdate"));
     await flush();
@@ -511,14 +513,18 @@ describe("ambient presentation", () => {
     await screen!.start({
       quiet: false,
       settings: settings({ livePhotoMotion: true }),
-      source: sequenceSource((i) => asset(`l${i}`, { livePhotoVideoId: `motion${i}` }))
+      source: sequenceSource((i) =>
+        i === 1 ? asset("l1", { livePhotoVideoId: "motion1" }) : asset(`a${i}`)
+      )
     });
     await flush();
-    expect(f.visible()).toEqual([]);
+    await f.endFade();
+
+    await vi.advanceTimersByTimeAsync(10000);
+    expect(f.visible()).toEqual(["blob:a0"]);
 
     await vi.advanceTimersByTimeAsync(ambientMotionStartWaitMs);
-    expect(f.visible()).toEqual(["blob:l0"]);
-    expect(f.incoming()).toEqual(["blob:l0"]);
+    expect(f.incoming()).toEqual(["blob:l1"]);
     expect(f.video.hidden).toBe(true);
   });
 
@@ -636,14 +642,20 @@ describe("ambient presentation", () => {
     await screen!.start({
       quiet: false,
       settings: settings({ livePhotoMotion: true }),
-      source: sequenceSource((i) => asset(`l${i}`, { livePhotoVideoId: `motion${i}` }))
+      source: sequenceSource((i) =>
+        i === 1 ? asset("l1", { livePhotoVideoId: "motion1" }) : asset(`a${i}`)
+      )
     });
     await flush();
+    await f.endFade();
+
+    await vi.advanceTimersByTimeAsync(10000);
     expect(f.video.getAttribute("src")).toBeNull();
 
     await vi.advanceTimersByTimeAsync(ambientMotionDownloadWaitMs);
-    expect(f.video.getAttribute("src")).toBe("https://immich.example/l0.mp4");
-    expect(f.visible()).toEqual([]);
+    expect(f.video.getAttribute("src")).toBe("https://immich.example/l1.mp4");
+    // Still waiting behind the picture on screen, not on black.
+    expect(f.visible()).toEqual(["blob:a0"]);
   });
 
   it("plays a Live Photo's sound when Play Live Photo sound is on", async () => {
@@ -671,6 +683,7 @@ describe("ambient presentation", () => {
       source: sequenceSource((i) => asset(`l${i}`, { livePhotoVideoId: `motion${i}` }))
     });
     await flush();
+    await f.endFade();
     position = 0.1;
     f.video.dispatchEvent(new Event("timeupdate"));
     await flush();

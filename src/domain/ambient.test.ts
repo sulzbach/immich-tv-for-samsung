@@ -17,8 +17,16 @@ describe("ambient settings", () => {
       showDetails: false,
       source: "all",
       startAfterIdleMinutes: 0,
-      stopAfterHours: 0
+      stopAfterHours: 0,
+      videoSound: false
     });
+  });
+
+  it("plays video sound only when it was turned on", () => {
+    expect(normalizeAmbientSettings({ videoSound: true }).videoSound).toBe(true);
+    expect(normalizeAmbientSettings({ videoSound: "yes" }).videoSound).toBe(false);
+    // Settings saved before the option existed stay muted.
+    expect(normalizeAmbientSettings({ includeVideos: true }).videoSound).toBe(false);
   });
 
   it("offers In order only for an album and Memories", () => {

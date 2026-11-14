@@ -206,6 +206,7 @@ export function mountAmbientScreen(options: AmbientScreenOptions): AmbientScreen
         player = createAmbientPlayer({
           elements: { layers, video },
           intervalMs: start.settings.intervalSeconds * 1000,
+          videoSound: start.settings.videoSound,
           onShow(asset) {
             showDetails(asset);
           },

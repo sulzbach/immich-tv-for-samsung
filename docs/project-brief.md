@@ -509,7 +509,7 @@ Success criterion: the television can reliably display Immich content for an ext
   - **An album**: chosen with a single-select album picker; shuffled or in order.
   - **Memories**: in Memory order or shuffled.
 - **Order:** Shuffle by default; In order for Album and Memories. A bounded ring of recent ids prevents immediate repeats; small sources wrap around.
-- **Media:** photos only by default; videos optionally, muted and capped at 60 seconds. Live Photos show their still.
+- **Media:** photos only by default; videos optionally, capped at 60 seconds and muted unless Play video sound is on. Live Photos show their still.
 - **Presentation:** a full-screen `ambient` route over everything, crossfading with opacity only between two layers, with at most three decoded images. Interval 10 s to 5 min (30 s default). Optional quiet overlays (a clock, on by default; photo details) that move around the safe area every few minutes against burn-in. Contain, on a dark background.
 - **Starting and stopping:**
   - Start now from Settings → Ambient.
@@ -518,7 +518,7 @@ Success criterion: the television can reliably display Immich content for an ext
   - Stop after (never by default; 1 to 4 hours) ends ambient mode and lets the TV's screensaver take over.
   - Hiding the app pauses ambient mode.
 - **Long runs:** failed assets are skipped (bounded); an unreachable server shows a calm message and retries with capped backoff; no unbounded arrays, listeners, timers or object URLs.
-- **Settings → Ambient:** source, album, order, interval, include videos, show clock, show photo details, start after idle, stop after, and Start now, persisted in `AppSettings` with a schema bump.
+- **Settings → Ambient:** source, album, order, interval, include videos, play video sound, show clock, show photo details, start after idle, stop after, and Start now, persisted in `AppSettings` with a schema bump.
 - No new Home rail and no new left-rail destination.
 
 #### OLED screensaver note (3 November 2026)

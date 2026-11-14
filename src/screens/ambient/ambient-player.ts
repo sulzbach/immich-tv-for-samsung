@@ -58,6 +58,8 @@ type AmbientPlayerOptions = {
   >;
   source: AmbientAssetSource;
   timers: AmbientTimers;
+  // Videos play with their sound (Settings > Ambient); muted otherwise.
+  videoSound: boolean;
 };
 
 export type AmbientPlayer = {
@@ -261,7 +263,9 @@ export function createAmbientPlayer(options: AmbientPlayerOptions): AmbientPlaye
 
     const video = elements.video;
 
-    video.muted = true;
+    const stillPlaying = () => playingVideo && current()?.id === asset.id;
+
+    video.muted = !options.videoSound;
     // The video stays transparent over its poster until it is showing
     // frames: shown at once, it was black, or a jump from the poster, while
     // the TV started its decoder and the first data arrived.
@@ -270,12 +274,24 @@ export function createAmbientPlayer(options: AmbientPlayerOptions): AmbientPlaye
     video.src = url;
     video.hidden = false;
     playingVideo = true;
-    video.play().catch(() => {
-      // A video that cannot play keeps its poster for the usual interval.
-      if (playingVideo && current()?.id === asset.id) {
-        stopVideo();
-      }
-    });
+    video
+      .play()
+      .catch(() => {
+        // A browser that won't start a video with sound on its own may
+        // still start it muted.
+        if (!stillPlaying() || video.muted) {
+          throw new Error("Video could not play.");
+        }
+
+        video.muted = true;
+        return video.play();
+      })
+      .catch(() => {
+        // A video that cannot play keeps its poster for the usual interval.
+        if (stillPlaying()) {
+          stopVideo();
+        }
+      });
 
     return true;
   }

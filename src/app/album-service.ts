@@ -1,3 +1,4 @@
+import { removeAudioTracks } from "../utils/remove-audio-tracks";
 import { createImmichClient } from "../api/immich/client";
 import type { RequestTimeouts } from "../api/immich/http";
 import type {
@@ -76,7 +77,12 @@ export type AlbumService = {
   // without waiting on the network; null for anything else, or a motion
   // too large to hold (livePhotoMotionMaxBytes). Revoke it with
   // revokeMotionUrl.
-  loadLivePhotoMotionUrl(asset: AlbumAsset): Promise<string | null>;
+  // `withAudio: false` removes the motion's audio tracks first, or gives
+  // null when the file can't be read for that (removeAudioTracks).
+  loadLivePhotoMotionUrl(
+    asset: AlbumAsset,
+    options?: { withAudio?: boolean }
+  ): Promise<string | null>;
   loadThumbnailUrl(album: Album): Promise<string | null>;
   loadSettings(): ConnectionSettings | null;
   revokeImageUrl(url: string): void;
@@ -245,7 +251,7 @@ export function createAlbumService(options: AlbumServiceOptions): AlbumService {
 
       return client.getAlbums();
     },
-    async loadLivePhotoMotionUrl(asset) {
+    async loadLivePhotoMotionUrl(asset, motionOptions) {
       if (asset.type !== "image" || !asset.livePhotoVideoId) {
         return null;
       }
@@ -261,6 +267,18 @@ export function createAlbumService(options: AlbumServiceOptions): AlbumService {
 
       if (blob.size > livePhotoMotionMaxBytes) {
         return null;
+      }
+
+      if (motionOptions && motionOptions.withAudio === false) {
+        // Response.arrayBuffer reads a Blob on Chromium 63, which lacks
+        // Blob.arrayBuffer.
+        const silent = removeAudioTracks(await new Response(blob).arrayBuffer());
+
+        return silent
+          ? (options.urlFactory || URL).createObjectURL(
+              new Blob([silent], { type: blob.type || "video/quicktime" })
+            )
+          : null;
       }
 
       return (options.urlFactory || URL).createObjectURL(blob);

@@ -225,7 +225,7 @@ describe("ambient presentation", () => {
   });
 
   it("shows the clock and details, and moves them on their timer", async () => {
-    fixture();
+    const f = fixture();
     await screen!.start({
       quiet: false,
       settings: settings({ showDetails: true }),
@@ -235,6 +235,9 @@ describe("ambient presentation", () => {
 
     expect(byId("ambient-clock").textContent).toBe("07:05");
     expect(byId("ambient-clock").hidden).toBe(false);
+    // The first picture's details wait for its fade, like every later one's.
+    expect(byId("ambient-details").textContent).toBe("");
+    await f.endFade();
     expect(byId("ambient-details").textContent).toBe("1 Jun 2024 · Exampleton, Exampleland");
     expect(byId("ambient-overlay").getAttribute("data-position")).toBe("0");
 

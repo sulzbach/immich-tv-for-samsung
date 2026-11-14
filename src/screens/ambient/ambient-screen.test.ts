@@ -11,6 +11,9 @@ import {
   ambientFadeGraceMs,
   ambientFadeMs,
   ambientMaxConsecutiveSkips,
+  ambientMotionEndMarginMs,
+  ambientMotionDownloadWaitMs,
+  ambientMotionStartWaitMs,
   ambientVideoCapMs
 } from "./ambient-player";
 import {
@@ -34,7 +37,14 @@ function asset(id: string, overrides: Partial<AlbumAsset> = {}): AlbumAsset {
 
 let screen: AmbientScreenController | null = null;
 
-function fixture(options: { failing?: (id: string) => boolean; noPassive?: boolean } = {}) {
+function fixture(
+  options: {
+    failing?: (id: string) => boolean;
+    // A Live Photo's downloaded motion URL, or null to stream it.
+    motion?: (id: string) => Promise<string | null>;
+    noPassive?: boolean;
+  } = {}
+) {
   let created = 0;
   let revoked = 0;
   const live = new Set<string>();
@@ -51,10 +61,14 @@ function fixture(options: { failing?: (id: string) => boolean; noPassive?: boole
       live.add(url);
       return url;
     }),
+    loadLivePhotoMotionUrl: vi.fn(async (item: AlbumAsset) =>
+      options.motion ? options.motion(item.id) : null
+    ),
     revokeImageUrl: vi.fn((url: string) => {
       revoked += 1;
       live.delete(url);
-    })
+    }),
+    revokeMotionUrl: vi.fn()
   };
   const onExit = vi.fn();
 
@@ -406,6 +420,267 @@ describe("ambient presentation", () => {
     expect(f.visible()).toEqual(["blob:l0"]);
     expect(f.service.loadAssetPlaybackUrl).not.toHaveBeenCalled();
     expect(f.video.hidden).toBe(true);
+  });
+
+  it("starts a Live Photo with its motion, not a fade, and freezes on its last frame", async () => {
+    const f = fixture();
+    let position = 0;
+    Object.defineProperty(f.video, "currentTime", { configurable: true, get: () => position });
+    Object.defineProperty(f.video, "duration", { configurable: true, get: () => 3 });
+    await screen!.start({
+      quiet: false,
+      settings: settings({ livePhotoMotion: true }),
+      source: sequenceSource((i) => asset(`l${i}`, { livePhotoVideoId: `motion${i}` }))
+    });
+    await flush();
+
+    // Nothing fades in: the motion is loading, muted, transparent.
+    expect(f.visible()).toEqual([]);
+    expect(f.incoming()).toEqual([]);
+    expect(f.service.loadAssetPlaybackUrl).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "l0" })
+    );
+    expect(f.video.muted).toBe(true);
+    expect(f.video.volume).toBe(0);
+    expect(f.video.loop).toBe(false);
+    expect(f.video.style.opacity).toBe("0");
+
+    // Its first frame shows the motion at once, with the still beneath it.
+    position = 0.5;
+    f.video.dispatchEvent(new Event("timeupdate"));
+    await flush();
+    expect(f.video.style.opacity).toBe("1");
+    expect(f.visible()).toEqual(["blob:l0"]);
+    expect(f.incoming()).toEqual([]);
+
+    // Timed from its length, it freezes before its last frames, without
+    // waiting for another timeupdate, and stays on screen.
+    const pause = vi.mocked(f.video.pause);
+    pause.mockClear();
+    await vi.advanceTimersByTimeAsync(2500 - ambientMotionEndMarginMs - 1);
+    expect(pause).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(pause).toHaveBeenCalledTimes(1);
+    expect(f.video.style.opacity).toBe("1");
+    expect(f.video.hidden).toBe(false);
+    expect(f.video.getAttribute("src")).toBe("https://immich.example/l0.mp4");
+
+    // At the interval, the next picture fades in over the frozen frame, which
+    // is released once covered.
+    await vi.advanceTimersByTimeAsync(10000);
+    expect(f.incoming()).toEqual(["blob:l1"]);
+    expect(f.video.hidden).toBe(false);
+    await f.endFade();
+    // Then the next Live Photo's motion loads over its still.
+    expect(f.visible()).toEqual(["blob:l1"]);
+    expect(f.video.getAttribute("src")).toBe("https://immich.example/l1.mp4");
+    expect(f.video.style.opacity).toBe("0");
+  });
+
+  it("cuts from the picture on screen straight to the next Live Photo's motion", async () => {
+    const f = fixture();
+    let position = 0;
+    Object.defineProperty(f.video, "currentTime", { configurable: true, get: () => position });
+    Object.defineProperty(f.video, "duration", { configurable: true, get: () => 3 });
+    await screen!.start({
+      quiet: false,
+      settings: settings({ livePhotoMotion: true }),
+      source: sequenceSource((i) =>
+        i === 1 ? asset("l1", { livePhotoVideoId: "motion1" }) : asset(`a${i}`)
+      )
+    });
+    await flush();
+    await f.endFade();
+
+    await vi.advanceTimersByTimeAsync(10000);
+    // The motion loads over the photo on screen; nothing fades.
+    expect(f.visible()).toEqual(["blob:a0"]);
+    expect(f.incoming()).toEqual([]);
+    expect(f.video.getAttribute("src")).toBe("https://immich.example/l1.mp4");
+
+    position = 0.04;
+    f.video.dispatchEvent(new Event("timeupdate"));
+    await flush();
+    expect(f.video.style.opacity).toBe("1");
+    expect(f.visible()).toEqual(["blob:l1"]);
+    expect(f.incoming()).toEqual([]);
+  });
+
+  it("fades the still in as usual when the motion doesn't start in time", async () => {
+    const f = fixture();
+    await screen!.start({
+      quiet: false,
+      settings: settings({ livePhotoMotion: true }),
+      source: sequenceSource((i) => asset(`l${i}`, { livePhotoVideoId: `motion${i}` }))
+    });
+    await flush();
+    expect(f.visible()).toEqual([]);
+
+    await vi.advanceTimersByTimeAsync(ambientMotionStartWaitMs);
+    expect(f.visible()).toEqual(["blob:l0"]);
+    expect(f.incoming()).toEqual(["blob:l0"]);
+    expect(f.video.hidden).toBe(true);
+  });
+
+  it("mutes a Live Photo again once the TV has started it", async () => {
+    const f = fixture();
+    await screen!.start({
+      quiet: false,
+      settings: settings({ livePhotoMotion: true }),
+      source: sequenceSource((i) => asset(`l${i}`, { livePhotoVideoId: `motion${i}` }))
+    });
+    await flush();
+
+    // The TV's player sets its own volume as it starts.
+    f.video.muted = false;
+    f.video.volume = 1;
+    f.video.dispatchEvent(new Event("playing"));
+    expect(f.video.muted).toBe(true);
+    expect(f.video.volume).toBe(0);
+  });
+
+  it("turns a Live Photo's audio track off, where the TV lists audio tracks", async () => {
+    const f = fixture();
+    const tracks: { enabled: boolean }[] = [];
+    Object.defineProperty(f.video, "audioTracks", { configurable: true, get: () => tracks });
+    await screen!.start({
+      quiet: false,
+      settings: settings({ livePhotoMotion: true }),
+      source: sequenceSource((i) => asset(`l${i}`, { livePhotoVideoId: `motion${i}` }))
+    });
+    await flush();
+
+    // The file's tracks are listed once its metadata has loaded.
+    tracks.push({ enabled: true });
+    f.video.dispatchEvent(new Event("loadedmetadata"));
+    expect(tracks[0]!.enabled).toBe(false);
+  });
+
+  it("leaves a Live Photo's audio track on when Play Live Photo sound is on", async () => {
+    const f = fixture();
+    const tracks = [{ enabled: false }];
+    Object.defineProperty(f.video, "audioTracks", { configurable: true, get: () => tracks });
+    await screen!.start({
+      quiet: false,
+      settings: settings({ livePhotoMotion: true, livePhotoSound: true }),
+      source: sequenceSource((i) => asset(`l${i}`, { livePhotoVideoId: `motion${i}` }))
+    });
+    await flush();
+
+    f.video.dispatchEvent(new Event("loadedmetadata"));
+    expect(tracks[0]!.enabled).toBe(true);
+  });
+
+  it("plays a Live Photo's motion from memory, downloaded ahead", async () => {
+    const f = fixture({ motion: async (id) => `blob:motion-${id}` });
+    Object.defineProperty(f.video, "currentTime", { configurable: true, get: () => 0.1 });
+    await screen!.start({
+      quiet: false,
+      settings: settings({ livePhotoMotion: true }),
+      source: sequenceSource((i) => asset(`l${i}`, { livePhotoVideoId: `motion${i}` }))
+    });
+    await flush();
+
+    expect(f.video.getAttribute("src")).toBe("blob:motion-l0");
+    f.video.dispatchEvent(new Event("timeupdate"));
+    await flush();
+    // The next Live Photo's motion is downloaded while this one shows.
+    expect(f.service.loadLivePhotoMotionUrl).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "l1" })
+    );
+  });
+
+  it("releases a downloaded motion once its Live Photo has gone", async () => {
+    const f = fixture({ motion: async (id) => `blob:motion-${id}` });
+    Object.defineProperty(f.video, "currentTime", { configurable: true, get: () => 0.1 });
+    await screen!.start({
+      quiet: false,
+      settings: settings({ livePhotoMotion: true }),
+      source: sequenceSource((i) => asset(`l${i}`, { livePhotoVideoId: `motion${i}` }))
+    });
+    await flush();
+    f.video.dispatchEvent(new Event("timeupdate"));
+    await flush();
+    f.video.dispatchEvent(new Event("ended"));
+    await flush();
+
+    await vi.advanceTimersByTimeAsync(10000);
+    expect(f.service.revokeMotionUrl).not.toHaveBeenCalledWith("blob:motion-l0");
+    await f.endFade();
+    expect(f.service.revokeMotionUrl).toHaveBeenCalledWith("blob:motion-l0");
+
+    screen!.stop();
+    expect(f.service.revokeMotionUrl).toHaveBeenCalledWith("blob:motion-l1");
+  });
+
+  it("streams a motion the TV won't play from memory", async () => {
+    const f = fixture({ motion: async (id) => `blob:motion-${id}` });
+    f.video.play = vi.fn(async () => {
+      if ((f.video.getAttribute("src") || "").indexOf("blob:") === 0) {
+        throw new DOMException("Unsupported source.", "NotSupportedError");
+      }
+    });
+    await screen!.start({
+      quiet: false,
+      settings: settings({ livePhotoMotion: true }),
+      source: sequenceSource((i) => asset(`l${i}`, { livePhotoVideoId: `motion${i}` }))
+    });
+    await flush();
+
+    expect(f.video.getAttribute("src")).toBe("https://immich.example/l0.mp4");
+    expect(f.video.hidden).toBe(false);
+  });
+
+  it("streams a motion whose download is slow, without losing the cut", async () => {
+    const f = fixture({ motion: () => new Promise<string | null>(() => undefined) });
+    await screen!.start({
+      quiet: false,
+      settings: settings({ livePhotoMotion: true }),
+      source: sequenceSource((i) => asset(`l${i}`, { livePhotoVideoId: `motion${i}` }))
+    });
+    await flush();
+    expect(f.video.getAttribute("src")).toBeNull();
+
+    await vi.advanceTimersByTimeAsync(ambientMotionDownloadWaitMs);
+    expect(f.video.getAttribute("src")).toBe("https://immich.example/l0.mp4");
+    expect(f.visible()).toEqual([]);
+  });
+
+  it("plays a Live Photo's sound when Play Live Photo sound is on", async () => {
+    const f = fixture();
+    await screen!.start({
+      quiet: false,
+      settings: settings({ livePhotoMotion: true, livePhotoSound: true }),
+      source: sequenceSource((i) => asset(`l${i}`, { livePhotoVideoId: `motion${i}` }))
+    });
+    await flush();
+
+    expect(f.video.muted).toBe(false);
+    expect(f.video.volume).toBe(1);
+    f.video.dispatchEvent(new Event("playing"));
+    expect(f.video.muted).toBe(false);
+  });
+
+  it("freezes on the last frame when the motion ends, without moving on", async () => {
+    const f = fixture();
+    let position = 0;
+    Object.defineProperty(f.video, "currentTime", { configurable: true, get: () => position });
+    await screen!.start({
+      quiet: false,
+      settings: settings({ livePhotoMotion: true }),
+      source: sequenceSource((i) => asset(`l${i}`, { livePhotoVideoId: `motion${i}` }))
+    });
+    await flush();
+    position = 0.1;
+    f.video.dispatchEvent(new Event("timeupdate"));
+    await flush();
+
+    f.video.dispatchEvent(new Event("ended"));
+    await flush();
+    expect(f.video.style.opacity).toBe("1");
+    expect(f.video.hidden).toBe(false);
+    expect(f.visible()).toEqual(["blob:l0"]);
+    expect(f.incoming()).toEqual([]);
   });
 });
 

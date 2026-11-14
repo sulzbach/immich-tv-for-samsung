@@ -18,12 +18,17 @@ describe("the OLED keep-awake's effect on videos", () => {
     ]);
   });
 
-  it("keeps ambient mode to photos while the keep-awake is on", () => {
-    const ambient = { ...defaultAppSettings.ambient, includeVideos: true, intervalSeconds: 60 };
+  it("keeps ambient mode to photos, and Live Photos still, while the keep-awake is on", () => {
+    const ambient = {
+      ...defaultAppSettings.ambient,
+      includeVideos: true,
+      intervalSeconds: 60,
+      livePhotoMotion: true
+    };
 
     expect(
       readEffectiveAmbientSettings({ ...defaultAppSettings, ambient, oledKeepAwake: true })
-    ).toEqual({ ...ambient, includeVideos: false });
+    ).toEqual({ ...ambient, includeVideos: false, livePhotoMotion: false });
     expect(
       readEffectiveAmbientSettings({ ...defaultAppSettings, ambient, oledKeepAwake: false })
     ).toBe(ambient);

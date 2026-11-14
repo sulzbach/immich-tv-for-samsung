@@ -72,9 +72,15 @@ export type AlbumService = {
   loadAssetPreviewUrl(asset: AlbumAsset): Promise<string | null>;
   loadAssetThumbnailUrl(asset: AlbumAsset): Promise<string | null>;
   loadAssetViewerStillUrl(asset: AlbumAsset): Promise<string | null>;
+  // A Live Photo's motion, downloaded whole into an object URL so it plays
+  // without waiting on the network; null for anything else, or a motion
+  // too large to hold (livePhotoMotionMaxBytes). Revoke it with
+  // revokeMotionUrl.
+  loadLivePhotoMotionUrl(asset: AlbumAsset): Promise<string | null>;
   loadThumbnailUrl(album: Album): Promise<string | null>;
   loadSettings(): ConnectionSettings | null;
   revokeImageUrl(url: string): void;
+  revokeMotionUrl(url: string): void;
   revokeThumbnailUrl(url: string): void;
 };
 
@@ -239,6 +245,26 @@ export function createAlbumService(options: AlbumServiceOptions): AlbumService {
 
       return client.getAlbums();
     },
+    async loadLivePhotoMotionUrl(asset) {
+      if (asset.type !== "image" || !asset.livePhotoVideoId) {
+        return null;
+      }
+
+      const settings = requireSettings(options.store.load());
+      const client = createImmichClient({
+        fetchImpl: options.fetchImpl,
+        logger: options.logger,
+        timeouts: options.timeouts,
+        settings
+      });
+      const blob = await client.getAssetVideoBlob(asset.livePhotoVideoId);
+
+      if (blob.size > livePhotoMotionMaxBytes) {
+        return null;
+      }
+
+      return (options.urlFactory || URL).createObjectURL(blob);
+    },
     loadAssetPlaybackUrl(asset) {
       const videoAssetId = readPlaybackVideoAssetId(asset);
 
@@ -335,11 +361,18 @@ export function createAlbumService(options: AlbumServiceOptions): AlbumService {
     revokeImageUrl(url) {
       (options.urlFactory || URL).revokeObjectURL(url);
     },
+    revokeMotionUrl(url) {
+      (options.urlFactory || URL).revokeObjectURL(url);
+    },
     revokeThumbnailUrl(url) {
       (options.urlFactory || URL).revokeObjectURL(url);
     }
   };
 }
+
+// Live Photo motion is a few seconds long, a few megabytes as iPhones record
+// it; anything far larger is streamed instead of held in memory.
+export const livePhotoMotionMaxBytes = 25 * 1024 * 1024;
 
 function readPlaybackVideoAssetId(asset: AlbumAsset): string | null {
   if (asset.type === "video") {

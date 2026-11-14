@@ -29,7 +29,11 @@ type AmbientScreenOptions = {
   passiveViewing?: PassiveViewing;
   service: Pick<
     AlbumService,
-    "loadAssetPlaybackUrl" | "loadAssetViewerStillUrl" | "revokeImageUrl"
+    | "loadAssetPlaybackUrl"
+    | "loadAssetViewerStillUrl"
+    | "loadLivePhotoMotionUrl"
+    | "revokeImageUrl"
+    | "revokeMotionUrl"
   >;
 };
 
@@ -222,6 +226,8 @@ export function mountAmbientScreen(options: AmbientScreenOptions): AmbientScreen
           elements: { layers, video },
           intervalMs: start.settings.intervalSeconds * 1000,
           videoSound: start.settings.videoSound,
+          livePhotoMotion: start.settings.livePhotoMotion,
+          livePhotoSound: start.settings.livePhotoSound,
           onShow(asset) {
             showDetails(asset);
           },

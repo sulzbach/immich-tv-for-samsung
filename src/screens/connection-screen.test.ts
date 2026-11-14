@@ -322,6 +322,33 @@ describe("Settings remote navigation and actions", () => {
     );
   });
 
+  it("turns Play Live Photo motion off and locks it with the OLED keep-awake, like videos", () => {
+    mount({
+      appSettings: {
+        ...defaultAppSettings,
+        ambient: { ...defaultAppSettings.ambient, livePhotoMotion: true }
+      }
+    });
+    controller!.show({ allowBack: true });
+    const motion = byId<HTMLInputElement>("ambient-live-photo-motion");
+    const hint = byId("ambient-live-photo-motion-hint");
+    expect(motion.checked).toBe(true);
+
+    byId("oled-keep-awake").focus();
+    pressKey(remoteKeys.enter);
+    expect(motion.checked).toBe(false);
+    expect(motion.getAttribute("aria-disabled")).toBe("true");
+    expect(hint.textContent).toBe("Off while Keep OLED screensaver away is on, in Display.");
+    motion.click();
+    expect(motion.checked).toBe(false);
+
+    byId("oled-keep-awake").focus();
+    pressKey(remoteKeys.enter);
+    expect(motion.checked).toBe(true);
+    expect(motion.hasAttribute("aria-disabled")).toBe(false);
+    expect(hint.textContent).toBe("Each Live Photo moves once, then shows its photo.");
+  });
+
   it("shows Include videos locked when the OLED keep-awake was saved on", () => {
     mount({
       appSettings: {
@@ -426,7 +453,7 @@ describe("Settings remote navigation and actions", () => {
 
     // Every control is reachable with Down, in order.
     const reached: string[] = [];
-    for (let step = 0; step < 8; step += 1) {
+    for (let step = 0; step < 10; step += 1) {
       pressKey(remoteKeys.down);
       reached.push(document.activeElement?.id || "");
     }
@@ -436,6 +463,8 @@ describe("Settings remote navigation and actions", () => {
       "ambient-stop",
       "ambient-include-videos",
       "ambient-video-sound",
+      "ambient-live-photo-motion",
+      "ambient-live-photo-sound",
       "ambient-show-clock",
       "ambient-show-details",
       "ambient-start"

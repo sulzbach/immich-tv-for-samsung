@@ -429,20 +429,18 @@ describe("ambient presentation", () => {
     Object.defineProperty(f.video, "duration", { configurable: true, get: () => 3 });
     await screen!.start({
       quiet: false,
-      settings: settings({ livePhotoMotion: true }),
+      settings: settings({ livePhotoMotion: true, livePhotoSound: true }),
       source: sequenceSource((i) => asset(`l${i}`, { livePhotoVideoId: `motion${i}` }))
     });
     await flush();
 
     // The first picture fades in like any other, without waiting for its
-    // motion, which loads over it, muted and transparent.
+    // motion, which loads over it, transparent.
     expect(f.visible()).toEqual(["blob:l0"]);
     expect(f.incoming()).toEqual(["blob:l0"]);
     expect(f.service.loadAssetPlaybackUrl).toHaveBeenCalledWith(
       expect.objectContaining({ id: "l0" })
     );
-    expect(f.video.muted).toBe(true);
-    expect(f.video.volume).toBe(0);
     expect(f.video.loop).toBe(false);
     expect(f.video.style.opacity).toBe("0");
 
@@ -486,7 +484,7 @@ describe("ambient presentation", () => {
     Object.defineProperty(f.video, "duration", { configurable: true, get: () => 3 });
     await screen!.start({
       quiet: false,
-      settings: settings({ livePhotoMotion: true }),
+      settings: settings({ livePhotoMotion: true, livePhotoSound: true }),
       source: sequenceSource((i) =>
         i === 1 ? asset("l1", { livePhotoVideoId: "motion1" }) : asset(`a${i}`)
       )
@@ -512,7 +510,7 @@ describe("ambient presentation", () => {
     const f = fixture();
     await screen!.start({
       quiet: false,
-      settings: settings({ livePhotoMotion: true }),
+      settings: settings({ livePhotoMotion: true, livePhotoSound: true }),
       source: sequenceSource((i) =>
         i === 1 ? asset("l1", { livePhotoVideoId: "motion1" }) : asset(`a${i}`)
       )
@@ -529,7 +527,7 @@ describe("ambient presentation", () => {
   });
 
   it("mutes a Live Photo again once the TV has started it", async () => {
-    const f = fixture();
+    const f = fixture({ motion: async (id) => `blob:motion-${id}` });
     await screen!.start({
       quiet: false,
       settings: settings({ livePhotoMotion: true }),
@@ -543,38 +541,6 @@ describe("ambient presentation", () => {
     f.video.dispatchEvent(new Event("playing"));
     expect(f.video.muted).toBe(true);
     expect(f.video.volume).toBe(0);
-  });
-
-  it("turns a Live Photo's audio track off, where the TV lists audio tracks", async () => {
-    const f = fixture();
-    const tracks: { enabled: boolean }[] = [];
-    Object.defineProperty(f.video, "audioTracks", { configurable: true, get: () => tracks });
-    await screen!.start({
-      quiet: false,
-      settings: settings({ livePhotoMotion: true }),
-      source: sequenceSource((i) => asset(`l${i}`, { livePhotoVideoId: `motion${i}` }))
-    });
-    await flush();
-
-    // The file's tracks are listed once its metadata has loaded.
-    tracks.push({ enabled: true });
-    f.video.dispatchEvent(new Event("loadedmetadata"));
-    expect(tracks[0]!.enabled).toBe(false);
-  });
-
-  it("leaves a Live Photo's audio track on when Play Live Photo sound is on", async () => {
-    const f = fixture();
-    const tracks = [{ enabled: false }];
-    Object.defineProperty(f.video, "audioTracks", { configurable: true, get: () => tracks });
-    await screen!.start({
-      quiet: false,
-      settings: settings({ livePhotoMotion: true, livePhotoSound: true }),
-      source: sequenceSource((i) => asset(`l${i}`, { livePhotoVideoId: `motion${i}` }))
-    });
-    await flush();
-
-    f.video.dispatchEvent(new Event("loadedmetadata"));
-    expect(tracks[0]!.enabled).toBe(true);
   });
 
   it("plays a Live Photo's motion from memory, downloaded ahead", async () => {
@@ -592,7 +558,8 @@ describe("ambient presentation", () => {
     await flush();
     // The next Live Photo's motion is downloaded while this one shows.
     expect(f.service.loadLivePhotoMotionUrl).toHaveBeenCalledWith(
-      expect.objectContaining({ id: "l1" })
+      expect.objectContaining({ id: "l1" }),
+      expect.anything()
     );
   });
 
@@ -628,7 +595,7 @@ describe("ambient presentation", () => {
     });
     await screen!.start({
       quiet: false,
-      settings: settings({ livePhotoMotion: true }),
+      settings: settings({ livePhotoMotion: true, livePhotoSound: true }),
       source: sequenceSource((i) => asset(`l${i}`, { livePhotoVideoId: `motion${i}` }))
     });
     await flush();
@@ -641,7 +608,7 @@ describe("ambient presentation", () => {
     const f = fixture({ motion: () => new Promise<string | null>(() => undefined) });
     await screen!.start({
       quiet: false,
-      settings: settings({ livePhotoMotion: true }),
+      settings: settings({ livePhotoMotion: true, livePhotoSound: true }),
       source: sequenceSource((i) =>
         i === 1 ? asset("l1", { livePhotoVideoId: "motion1" }) : asset(`a${i}`)
       )
@@ -656,6 +623,63 @@ describe("ambient presentation", () => {
     expect(f.video.getAttribute("src")).toBe("https://immich.example/l1.mp4");
     // Still waiting behind the picture on screen, not on black.
     expect(f.visible()).toEqual(["blob:a0"]);
+  });
+
+  it("plays muted motion from a copy without its audio, never streamed", async () => {
+    const f = fixture({ motion: async (id) => `blob:silent-${id}` });
+    await screen!.start({
+      quiet: false,
+      settings: settings({ livePhotoMotion: true }),
+      source: sequenceSource((i) => asset(`l${i}`, { livePhotoVideoId: `motion${i}` }))
+    });
+    await flush();
+
+    expect(f.service.loadLivePhotoMotionUrl).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "l0" }),
+      { withAudio: false }
+    );
+    expect(f.video.getAttribute("src")).toBe("blob:silent-l0");
+    expect(f.service.loadAssetPlaybackUrl).not.toHaveBeenCalled();
+  });
+
+  it("leaves a muted Live Photo still when its silent copy can't be had", async () => {
+    const f = fixture({ motion: async () => null });
+    await screen!.start({
+      quiet: false,
+      settings: settings({ livePhotoMotion: true }),
+      source: sequenceSource((i) =>
+        i === 1 ? asset("l1", { livePhotoVideoId: "motion1" }) : asset(`a${i}`)
+      )
+    });
+    await flush();
+    await f.endFade();
+
+    await vi.advanceTimersByTimeAsync(10000 + ambientMotionStartWaitMs);
+    await f.endFade();
+    expect(f.visible()).toEqual(["blob:l1"]);
+    expect(f.video.getAttribute("src")).toBeNull();
+    expect(f.service.loadAssetPlaybackUrl).not.toHaveBeenCalled();
+  });
+
+  it("starts muted motion over its still once its silent copy arrives", async () => {
+    const arrive: Record<string, (url: string) => void> = {};
+    const f = fixture({
+      motion: (id) =>
+        new Promise<string | null>((resolve) => {
+          arrive[id] = resolve;
+        })
+    });
+    await screen!.start({
+      quiet: false,
+      settings: settings({ livePhotoMotion: true }),
+      source: sequenceSource((i) => asset(`l${i}`, { livePhotoVideoId: `motion${i}` }))
+    });
+    await flush();
+    expect(f.video.getAttribute("src")).toBeNull();
+
+    arrive["l0"]!("blob:silent-l0");
+    await flush();
+    expect(f.video.getAttribute("src")).toBe("blob:silent-l0");
   });
 
   it("plays a Live Photo's sound when Play Live Photo sound is on", async () => {
@@ -679,7 +703,7 @@ describe("ambient presentation", () => {
     Object.defineProperty(f.video, "currentTime", { configurable: true, get: () => position });
     await screen!.start({
       quiet: false,
-      settings: settings({ livePhotoMotion: true }),
+      settings: settings({ livePhotoMotion: true, livePhotoSound: true }),
       source: sequenceSource((i) => asset(`l${i}`, { livePhotoVideoId: `motion${i}` }))
     });
     await flush();

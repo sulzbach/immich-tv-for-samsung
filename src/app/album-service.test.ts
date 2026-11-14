@@ -405,6 +405,57 @@ describe("album service", () => {
       expect(f.createObjectURL).not.toHaveBeenCalled();
     });
 
+    it("removes the audio tracks when asked for a silent copy", async () => {
+      // ftyp + moov(trak(mdia(hdlr soun))) + mdat
+      const boxOf = (type: string, ...parts: Uint8Array[]) => {
+        const size = 8 + parts.reduce((total, part) => total + part.length, 0);
+        const out = new Uint8Array(size);
+        new DataView(out.buffer).setUint32(0, size);
+        out.set(
+          Array.from(type).map((c) => c.charCodeAt(0)),
+          4
+        );
+        let at = 8;
+        parts.forEach((part) => {
+          out.set(part, at);
+          at += part.length;
+        });
+        return out;
+      };
+      const chars = (value: string) =>
+        new Uint8Array(Array.from(value).map((c) => c.charCodeAt(0)));
+      const hdlr = boxOf(
+        "hdlr",
+        new Uint8Array(4),
+        chars("mhlr"),
+        chars("soun"),
+        new Uint8Array(12)
+      );
+      const mov = [
+        boxOf("ftyp", chars("qt  ")),
+        boxOf("mdat", new Uint8Array(16)),
+        boxOf("moov", boxOf("trak", boxOf("mdia", hdlr)))
+      ];
+      const f = serviceFor(new Response(new Blob(mov, { type: "video/quicktime" })));
+
+      await expect(f.service.loadLivePhotoMotionUrl(livePhoto, { withAudio: false })).resolves.toBe(
+        "blob:motion"
+      );
+      const silent = f.createObjectURL.mock.calls[0]![0] as Blob;
+      // Only the empty movie box is left of the movie: 8 bytes.
+      expect(silent.size).toBe(mov[0]!.length + mov[1]!.length + 8);
+      expect(silent.type).toBe("video/quicktime");
+    });
+
+    it("gives no silent copy of a file it can't read", async () => {
+      const f = serviceFor(new Response(new Blob(["not a movie"], { type: "video/quicktime" })));
+
+      await expect(
+        f.service.loadLivePhotoMotionUrl(livePhoto, { withAudio: false })
+      ).resolves.toBeNull();
+      expect(f.createObjectURL).not.toHaveBeenCalled();
+    });
+
     it("rejects a playback response that is not a video", async () => {
       const f = serviceFor(new Response("<html>", { headers: { "content-type": "text/html" } }));
 

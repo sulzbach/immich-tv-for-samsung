@@ -177,7 +177,9 @@ export function createAmbientPlayer(options: AmbientPlayerOptions): AmbientPlaye
       url: null
     };
 
-    entry.ready = service.loadLivePhotoMotionUrl(asset).then(
+    // Muted, the motion is played from a copy without its audio track: the
+    // TV was heard playing it although muted (removeAudioTracks).
+    entry.ready = service.loadLivePhotoMotionUrl(asset, { withAudio: options.livePhotoSound }).then(
       (url) => {
         if (url && entry.released) {
           service.revokeMotionUrl(url);
@@ -426,7 +428,31 @@ export function createAmbientPlayer(options: AmbientPlayerOptions): AmbientPlaye
 
     // A cut to the motion has already played it, or given up on it.
     if (playsMotion(asset) && motionTriedId !== asset.id) {
-      playMotion(asset, motions[asset.id]?.url || null);
+      const downloaded = motions[asset.id]?.url || null;
+
+      if (downloaded || options.livePhotoSound) {
+        playMotion(asset, downloaded);
+        return;
+      }
+
+      // Muted motion plays only once its silent copy is downloaded, never
+      // streamed (a stream keeps its audio): it starts over the still as
+      // soon as the copy is ready, within half the interval.
+      const expected = generation;
+
+      motionTriedId = asset.id;
+      void preloadedMotion(asset, options.intervalMs / 2).then((url) => {
+        if (
+          url &&
+          isCurrent(expected) &&
+          current()?.id === asset.id &&
+          !advancing &&
+          !playingMotion &&
+          !playingVideo
+        ) {
+          playMotion(asset, url);
+        }
+      });
     }
   }
 
@@ -436,12 +462,13 @@ export function createAmbientPlayer(options: AmbientPlayerOptions): AmbientPlaye
   // ends.
   // Plays the motion from `downloaded` when it was downloaded ahead, or
   // streams it; a downloaded motion the TV won't play is streamed instead.
+  // Muted motion is never streamed, since a stream keeps its audio.
   function playMotion(
     asset: AlbumAsset,
     downloaded: string | null,
     onFailed: () => void = () => undefined
   ): boolean {
-    const streamed = service.loadAssetPlaybackUrl(asset);
+    const streamed = options.livePhotoSound ? service.loadAssetPlaybackUrl(asset) : null;
     const url = downloaded || streamed;
 
     if (!url) {
@@ -791,32 +818,12 @@ type PreloadedMotion = {
   url: string | null;
 };
 
-// The media element's audio tracks, where the engine has them (Samsung's
-// video element guide lists audioTracks; Chromium 63 has no AudioTrackList).
-type AudioTrackSwitches = { length: number; [index: number]: { enabled: boolean } };
-
-// Sound on or off. Off mutes, sets the volume to 0 and, where the engine has
-// audio tracks, turns the file's own audio track off: on the TV (Tizen 8.0)
-// a Live Photo's motion, an iPhone .mov with PCM audio that Immich serves as
-// it is, was heard although muted at volume 0. Audio tracks are listed only
-// once the file's metadata has loaded, so this is applied again then.
+// Sound on or off: muted and at volume 0 when off. On the TV a Live Photo's
+// motion was still heard so (an iPhone .mov with PCM audio), which is why
+// muted motion plays from a copy without its audio track.
 function setSound(video: HTMLVideoElement, on: boolean): void {
   video.muted = !on;
   video.volume = on ? 1 : 0;
-
-  const tracks = (video as HTMLVideoElement & { audioTracks?: AudioTrackSwitches }).audioTracks;
-
-  if (!tracks) {
-    return;
-  }
-
-  for (let index = 0; index < tracks.length; index += 1) {
-    const track = tracks[index];
-
-    if (track) {
-      track.enabled = on;
-    }
-  }
 }
 
 // Fades `image` in above everything else on the ambient screen, resolving

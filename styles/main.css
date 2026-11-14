@@ -120,7 +120,13 @@
   --caption-fade-start: rgba(2, 7, 10, 0);
   --caption-fade-end: rgba(2, 7, 10, 0.84);
   --overlay-text-shadow: rgba(0, 0, 0, 0.72);
-  --ambient-text-shadow: rgba(0, 0, 0, 0.65);
+  /* Ambient mode's clock and details sit straight on any photo, bright or
+     dark: solid text with a thin dark outline that follows each letter,
+     and a soft halo around it. */
+  --ambient-text: #eef3fc;
+  --ambient-text-detail: #d6e0ef;
+  --ambient-text-outline: rgba(0, 0, 0, 0.8);
+  --ambient-text-halo: rgba(0, 0, 0, 0.45);
   color-scheme: dark;
   font-family: Arial, Helvetica, sans-serif;
   background: var(--surface);
@@ -221,7 +227,10 @@
   --caption-fade-start: #000000;
   --caption-fade-end: #000000;
   --overlay-text-shadow: transparent;
-  --ambient-text-shadow: transparent;
+  --ambient-text: #ffffff;
+  --ambient-text-detail: #e0e0e0;
+  --ambient-text-outline: transparent;
+  --ambient-text-halo: transparent;
 }
 
 * {
@@ -3178,8 +3187,13 @@ button.asset-viewer-faces[aria-pressed="true"]:focus {
   position: absolute;
   z-index: 3;
   max-width: 760px;
-  color: var(--text-faint);
-  text-shadow: 0 2px 10px var(--ambient-text-shadow);
+  color: var(--ambient-text);
+  /* Tight shadows all round make the outline; the wide one, the halo. */
+  text-shadow:
+    0 0 1px var(--ambient-text-outline),
+    0 0 2px var(--ambient-text-outline),
+    0 1px 2px var(--ambient-text-outline),
+    0 0 12px var(--ambient-text-halo);
   padding: var(--overlay-plate-padding);
   border-radius: var(--overlay-plate-radius);
   background: var(--overlay-plate);
@@ -3217,7 +3231,7 @@ button.asset-viewer-faces[aria-pressed="true"]:focus {
 
 .ambient-details {
   margin: 8px 0 0;
-  color: var(--text-detail);
+  color: var(--ambient-text-detail);
   font-size: 24px;
   font-weight: 600;
 }

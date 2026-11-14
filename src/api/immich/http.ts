@@ -46,6 +46,8 @@ export type JsonRequest<T> = {
 export type BlobRequest = {
   accept: string;
   allowOctetStream?: boolean;
+  // What the response must be: an image (the default) or a video.
+  media?: "image" | "video";
   auth: boolean;
   feature?: string;
   path: string;
@@ -222,13 +224,17 @@ async function requestBlob(options: BlobRequestOptions): Promise<Blob> {
     });
   }
 
+  const media = options.media || "image";
+
   if (
-    !isImageResponse(response) &&
+    !isMediaResponse(response, media) &&
     !(options.allowOctetStream && isOctetStreamResponse(response))
   ) {
     throw new AppError(
       "invalid-response",
-      "Immich returned a thumbnail response that was not an image."
+      media === "image"
+        ? "Immich returned a thumbnail response that was not an image."
+        : "Immich returned a playback response that was not a video."
     );
   }
 
@@ -280,10 +286,10 @@ function readApiMessage(response: Response, body: unknown): string {
   return `Immich returned HTTP ${response.status}.`;
 }
 
-function isImageResponse(response: Response): boolean {
+function isMediaResponse(response: Response, media: "image" | "video"): boolean {
   const contentType = response.headers.get("content-type");
 
-  return Boolean(contentType && /^image\//i.test(contentType));
+  return Boolean(contentType && contentType.toLowerCase().indexOf(`${media}/`) === 0);
 }
 
 function isOctetStreamResponse(response: Response): boolean {

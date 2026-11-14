@@ -29,7 +29,11 @@ type AmbientScreenOptions = {
   passiveViewing?: PassiveViewing;
   service: Pick<
     AlbumService,
-    "loadAssetPlaybackUrl" | "loadAssetViewerStillUrl" | "revokeImageUrl"
+    | "loadAssetPlaybackUrl"
+    | "loadAssetViewerStillUrl"
+    | "loadLivePhotoMotionUrl"
+    | "revokeImageUrl"
+    | "revokeMotionUrl"
   >;
 };
 

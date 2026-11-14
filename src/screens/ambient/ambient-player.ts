@@ -37,6 +37,9 @@ export const ambientMotionEndMarginMs = 300;
 // How long a Live Photo's motion may take to show its first frame before the
 // photo fades in as usual instead.
 export const ambientMotionStartWaitMs = 4000;
+// Of that, how long a motion still downloading may be waited for before it
+// is streamed instead.
+export const ambientMotionDownloadWaitMs = 2000;
 // Failed pictures skipped in a row before ambient mode treats the source as
 // failing.
 export const ambientMaxConsecutiveSkips = 5;
@@ -66,7 +69,11 @@ type AmbientPlayerOptions = {
   onState(state: AmbientPlayerState): void;
   service: Pick<
     AlbumService,
-    "loadAssetPlaybackUrl" | "loadAssetViewerStillUrl" | "revokeImageUrl"
+    | "loadAssetPlaybackUrl"
+    | "loadAssetViewerStillUrl"
+    | "loadLivePhotoMotionUrl"
+    | "revokeImageUrl"
+    | "revokeMotionUrl"
   >;
   source: AmbientAssetSource;
   timers: AmbientTimers;
@@ -110,6 +117,10 @@ export function createAmbientPlayer(options: AmbientPlayerOptions): AmbientPlaye
   // The Live Photo whose motion a cut already tried, so it isn't tried again
   // over its still.
   let motionTriedId: string | null = null;
+  // Live Photo motion downloaded ahead, by asset, for the playlist's assets
+  // only (at most three), so it plays from memory without waiting on the
+  // network. Released as its asset leaves the playlist.
+  let motions: Record<string, PreloadedMotion> = {};
 
   const isCurrent = (expected: number) => running && expected === generation;
   const current = () => playlist[currentIndex];
@@ -131,6 +142,91 @@ export function createAmbientPlayer(options: AmbientPlayerOptions): AmbientPlaye
       onImageLoaded: (asset) => handleLoaded(asset),
       revokeImageUrl: service.revokeImageUrl,
       state: images
+    });
+    reconcileMotions();
+  }
+
+  // Downloads the motion of each Live Photo in the playlist that lacks one,
+  // and releases the motion of any asset no longer in it.
+  function reconcileMotions(): void {
+    const ids = playlist.map((asset) => asset.id);
+
+    Object.keys(motions).forEach((id) => {
+      if (ids.indexOf(id) < 0) {
+        releaseMotion(id);
+      }
+    });
+
+    if (!options.livePhotoMotion) {
+      return;
+    }
+
+    playlist.forEach((asset) => {
+      if (playsMotion(asset) && !motions[asset.id]) {
+        preloadMotion(asset);
+      }
+    });
+  }
+
+  function preloadMotion(asset: AlbumAsset): void {
+    const entry: PreloadedMotion = {
+      ready: Promise.resolve(null),
+      released: false,
+      url: null
+    };
+
+    entry.ready = service.loadLivePhotoMotionUrl(asset).then(
+      (url) => {
+        if (url && entry.released) {
+          service.revokeMotionUrl(url);
+          return null;
+        }
+
+        entry.url = url;
+        return url;
+      },
+      // A motion that can't be downloaded is streamed instead.
+      () => null
+    );
+    motions[asset.id] = entry;
+  }
+
+  function releaseMotion(id: string): void {
+    const entry = motions[id];
+
+    if (!entry) {
+      return;
+    }
+
+    delete motions[id];
+    entry.released = true;
+
+    if (entry.url) {
+      service.revokeMotionUrl(entry.url);
+      entry.url = null;
+    }
+  }
+
+  // The downloaded motion's URL, waiting at most `waitMs` for a download in
+  // progress; null when there is none in time.
+  function preloadedMotion(asset: AlbumAsset, waitMs: number): Promise<string | null> {
+    const entry = motions[asset.id];
+
+    if (!entry) {
+      return Promise.resolve(null);
+    }
+
+    if (entry.url) {
+      return Promise.resolve(entry.url);
+    }
+
+    return new Promise((resolve) => {
+      const timer = timers.set(() => resolve(null), waitMs);
+
+      void entry.ready.then((url) => {
+        timers.clear(timer);
+        resolve(url);
+      });
     });
   }
 
@@ -269,8 +365,17 @@ export function createAmbientPlayer(options: AmbientPlayerOptions): AmbientPlaye
 
   // Plays the motion and resolves once it shows its first frame (true), or
   // when it can't, in time (false, with the motion released).
-  function startMotion(asset: AlbumAsset): Promise<boolean> {
+  async function startMotion(asset: AlbumAsset): Promise<boolean> {
+    const expected = generation;
+    const deadline = Date.now() + ambientMotionStartWaitMs;
+
     motionTriedId = asset.id;
+
+    const downloaded = await preloadedMotion(asset, ambientMotionDownloadWaitMs);
+
+    if (!isCurrent(expected)) {
+      return false;
+    }
 
     return new Promise((resolve) => {
       let settled = false;
@@ -289,11 +394,11 @@ export function createAmbientPlayer(options: AmbientPlayerOptions): AmbientPlaye
 
         resolve(ok);
       };
-      const timer = timers.set(() => settle(false), ambientMotionStartWaitMs);
+      const timer = timers.set(() => settle(false), Math.max(0, deadline - Date.now()));
 
       onMotionShown = () => settle(true);
 
-      if (!playMotion(asset, () => settle(false))) {
+      if (!playMotion(asset, downloaded, () => settle(false))) {
         settle(false);
       }
     });
@@ -320,7 +425,7 @@ export function createAmbientPlayer(options: AmbientPlayerOptions): AmbientPlaye
 
     // A cut to the motion has already played it, or given up on it.
     if (playsMotion(asset) && motionTriedId !== asset.id) {
-      playMotion(asset);
+      playMotion(asset, motions[asset.id]?.url || null);
     }
   }
 
@@ -328,8 +433,15 @@ export function createAmbientPlayer(options: AmbientPlayerOptions): AmbientPlaye
   // until the motion has a frame to show (as in the viewer, ADR 0005). The
   // interval runs as for any photo; the still comes back before the motion
   // ends.
-  function playMotion(asset: AlbumAsset, onFailed: () => void = () => undefined): boolean {
-    const url = service.loadAssetPlaybackUrl(asset);
+  // Plays the motion from `downloaded` when it was downloaded ahead, or
+  // streams it; a downloaded motion the TV won't play is streamed instead.
+  function playMotion(
+    asset: AlbumAsset,
+    downloaded: string | null,
+    onFailed: () => void = () => undefined
+  ): boolean {
+    const streamed = service.loadAssetPlaybackUrl(asset);
+    const url = downloaded || streamed;
 
     if (!url) {
       return false;
@@ -361,11 +473,18 @@ export function createAmbientPlayer(options: AmbientPlayerOptions): AmbientPlaye
         return video.play();
       })
       .catch(() => {
-        // Motion that cannot play leaves the still, as with motion off.
-        if (stillPlaying()) {
-          stopVideo();
-          onFailed();
+        if (!stillPlaying()) {
+          return;
         }
+
+        stopVideo();
+
+        if (downloaded && streamed && playMotion(asset, null, onFailed)) {
+          return;
+        }
+
+        // Motion that cannot play leaves the still, as with motion off.
+        onFailed();
       });
 
     return true;
@@ -602,6 +721,8 @@ export function createAmbientPlayer(options: AmbientPlayerOptions): AmbientPlaye
     advancing = false;
     fetchingNext = false;
     motionTriedId = null;
+    Object.keys(motions).forEach(releaseMotion);
+    motions = {};
   }
 
   // Shows the failure over a dark screen and tries again after a capped
@@ -646,6 +767,14 @@ export function createAmbientPlayer(options: AmbientPlayerOptions): AmbientPlaye
     }
   };
 }
+
+type PreloadedMotion = {
+  ready: Promise<string | null>;
+  // Its asset has left the playlist; a download still in progress is
+  // released as soon as it finishes.
+  released: boolean;
+  url: string | null;
+};
 
 // The media element's audio tracks, where the engine has them (Samsung's
 // video element guide lists audioTracks; Chromium 63 has no AudioTrackList).

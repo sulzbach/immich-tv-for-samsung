@@ -124,7 +124,9 @@ function createServices(
     loadVideoAssets: vi.fn(() => page(assets.slice(0, 2))),
     loadVideoAssetsPage: vi.fn(() => page(assets.slice(0, 2))),
     loadTimelineBuckets: vi.fn(async () => [bucket]),
+    loadLivePhotoMotionUrl: vi.fn(async () => null),
     revokeImageUrl: vi.fn(),
+    revokeMotionUrl: vi.fn(),
     revokeThumbnailUrl: vi.fn()
   } satisfies AlbumService;
 

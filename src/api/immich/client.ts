@@ -128,6 +128,8 @@ export type ImmichClient = {
   getAlbumDetail(albumId: string): Promise<AlbumDetail>;
   getAlbums(): Promise<Album[]>;
   getAssetThumbnail(assetId: string, size?: AssetThumbnailSize): Promise<Blob>;
+  // A short video, such as a Live Photo's motion, downloaded whole.
+  getAssetVideoBlob(assetId: string): Promise<Blob>;
   getAssetVideoPlaybackUrl(assetId: string): string;
   getCurrentUser(): Promise<CurrentUser>;
   getServerVersion(): Promise<ServerVersion>;
@@ -444,6 +446,15 @@ export function createImmichClient(options: CreateImmichClientOptions): ImmichCl
         auth: true,
         feature: "photos and videos",
         path: `/assets/${encodeURIComponent(assetId)}/thumbnail?size=${encodeURIComponent(size)}`
+      });
+    },
+    getAssetVideoBlob(assetId) {
+      return http.blob({
+        accept: "video/*",
+        auth: true,
+        feature: "photos and videos",
+        media: "video",
+        path: `/assets/${encodeURIComponent(assetId)}/video/playback`
       });
     },
     getAssetVideoPlaybackUrl(assetId) {

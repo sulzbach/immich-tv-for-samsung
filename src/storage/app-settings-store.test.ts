@@ -80,7 +80,8 @@ describe("app settings store", () => {
         startAfterIdleMinutes: 10,
         stopAfterHours: 2,
         livePhotoMotion: true,
-        livePhotoSound: true
+        livePhotoSound: true,
+        panPortraits: true
       },
       autoplayVideos: true,
       highContrast: true,

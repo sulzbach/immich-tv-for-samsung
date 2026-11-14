@@ -36,6 +36,11 @@ export const ambientVideoCapMs = 60000;
 export const ambientMotionEndMarginMs = 300;
 // How long a Live Photo's motion may take to show its first frame before the
 // photo fades in as usual instead.
+// Pan portrait photos: the zoom to the screen's width, the scroll's speed
+// down the photo, and the pause on its bottom before the next picture.
+export const ambientPanZoomMs = 2000;
+export const ambientPanSpeedPxPerS = 80;
+export const ambientPanHoldMs = 1000;
 export const ambientMotionStartWaitMs = 4000;
 // Of that, how long a motion still downloading may be waited for before it
 // is streamed instead.
@@ -64,6 +69,8 @@ type AmbientPlayerOptions = {
   livePhotoMotion: boolean;
   // ...with its sound; muted otherwise.
   livePhotoSound: boolean;
+  // A portrait photo zooms to the screen's width, then scrolls to its bottom.
+  panPortraits: boolean;
   // A picture is now showing (for its details).
   onShow(asset: AlbumAsset): void;
   onState(state: AmbientPlayerState): void;
@@ -345,6 +352,7 @@ export function createAmbientPlayer(options: AmbientPlayerOptions): AmbientPlaye
     void fadeIn(first, timers).then(() => {
       if (isCurrent(expected)) {
         first.removeAttribute("data-incoming");
+        panPortrait(asset);
       }
     });
     shown(asset);
@@ -402,6 +410,60 @@ export function createAmbientPlayer(options: AmbientPlayerOptions): AmbientPlaye
     options.onState({ kind: "playing" });
     dwell(asset);
     void fetchNext();
+  }
+
+  // Pan portrait photos (Settings > Ambient): once a portrait still is fully
+  // shown, it zooms from its top until it fills the screen's width, then
+  // scrolls down to its bottom, by transform alone (the compositor's work, no
+  // repaint), and stays until the pan and a short pause end, or the interval,
+  // whichever is longer. Portrait is read from the decoded preview, which
+  // Immich serves already rotated. Not for videos, nor for Live Photos whose
+  // motion plays over the still.
+  function panPortrait(asset: AlbumAsset): void {
+    if (!options.panPortraits || asset.type !== "image" || playsMotion(asset)) {
+      return;
+    }
+
+    const image = layer(front);
+    const box = image.getBoundingClientRect();
+    const width = image.naturalWidth;
+    const height = image.naturalHeight;
+
+    if (!(height > width) || !(box.width > 0) || !(box.height > 0)) {
+      return;
+    }
+
+    // Shown whole (object-fit: contain), the photo is as tall as the screen;
+    // scaled to the screen's width, it overflows by `travel`.
+    const scale = box.width / ((box.height * width) / height);
+    const travel = box.height * scale - box.height;
+
+    if (scale <= 1.05) {
+      return;
+    }
+
+    const expected = generation;
+    const scrollMs = Math.round((travel / ambientPanSpeedPxPerS) * 1000);
+
+    image.setAttribute("data-panning", "true");
+    image.style.transformOrigin = "50% 0";
+    image.style.transition = `transform ${ambientPanZoomMs}ms ease-in-out`;
+    image.style.transform = `scale(${scale})`;
+    timers.set(() => {
+      if (isCurrent(expected) && layer(front) === image) {
+        image.style.transition = `transform ${scrollMs}ms ease-in-out`;
+        image.style.transform = `translateY(${-travel}px) scale(${scale})`;
+      }
+    }, ambientPanZoomMs);
+
+    if (dwellTimer !== null) {
+      timers.clear(dwellTimer);
+    }
+
+    dwellTimer = timers.set(
+      endDwell,
+      Math.max(options.intervalMs, ambientPanZoomMs + scrollMs + ambientPanHoldMs)
+    );
   }
 
   // How long the current asset stays: the interval, or a video's length up
@@ -674,6 +736,7 @@ export function createAmbientPlayer(options: AmbientPlayerOptions): AmbientPlaye
         layer(outgoing).removeAttribute("data-incoming");
         layer(back).setAttribute("data-visible", "true");
         layer(outgoing).removeAttribute("data-visible");
+        resetPan(layer(outgoing));
         clearStill(layer(outgoing));
         front = back;
         playlist = playlist.slice(currentIndex + 1);
@@ -710,12 +773,14 @@ export function createAmbientPlayer(options: AmbientPlayerOptions): AmbientPlaye
     stopVideo();
     layer(outgoing).removeAttribute("data-visible");
     layer(front).removeAttribute("data-incoming");
+    resetPan(layer(outgoing));
     clearStill(layer(outgoing));
     playlist = playlist.slice(currentIndex);
     currentIndex = 0;
     advancing = false;
     reconcile();
     shown(upcoming);
+    panPortrait(upcoming);
   }
 
   function release(): void {
@@ -726,6 +791,7 @@ export function createAmbientPlayer(options: AmbientPlayerOptions): AmbientPlaye
     elements.layers.forEach((image) => {
       image.removeAttribute("data-visible");
       image.removeAttribute("data-incoming");
+      resetPan(image);
       clearStill(image);
     });
     revokeAllAssetViewerImages(images, service.revokeImageUrl);
@@ -791,6 +857,14 @@ type PreloadedMotion = {
   released: boolean;
   url: string | null;
 };
+
+// Takes a layer back from a portrait pan, without animating.
+function resetPan(image: HTMLImageElement): void {
+  image.removeAttribute("data-panning");
+  image.style.transition = "";
+  image.style.transform = "";
+  image.style.transformOrigin = "";
+}
 
 // Sound on or off: muted and at volume 0 when off. On the TV a Live Photo's
 // motion was still heard so (an iPhone .mov with PCM audio), which is why

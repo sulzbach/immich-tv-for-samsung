@@ -19,7 +19,8 @@ describe("ambient settings", () => {
       startAfterIdleMinutes: 0,
       stopAfterHours: 0,
       livePhotoMotion: false,
-      livePhotoSound: false
+      livePhotoSound: false,
+      panPortraits: false
     });
   });
 

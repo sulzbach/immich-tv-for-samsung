@@ -3156,6 +3156,12 @@ button.asset-viewer-faces[aria-pressed="true"]:focus {
   opacity: 1;
 }
 
+/* Pan portrait photos: the transform is set inline by the player; the
+   compositor keeps the layer ready for it only while panning. */
+.ambient-layer[data-panning] {
+  will-change: transform;
+}
+
 .ambient-layer[data-incoming] {
   z-index: 2;
   background: #000000;

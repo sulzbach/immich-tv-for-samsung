@@ -453,7 +453,7 @@ describe("Settings remote navigation and actions", () => {
 
     // Every control is reachable with Down, in order.
     const reached: string[] = [];
-    for (let step = 0; step < 9; step += 1) {
+    for (let step = 0; step < 10; step += 1) {
       pressKey(remoteKeys.down);
       reached.push(document.activeElement?.id || "");
     }
@@ -464,6 +464,7 @@ describe("Settings remote navigation and actions", () => {
       "ambient-include-videos",
       "ambient-live-photo-motion",
       "ambient-live-photo-sound",
+      "ambient-pan-portraits",
       "ambient-show-clock",
       "ambient-show-details",
       "ambient-start"

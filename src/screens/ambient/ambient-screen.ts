@@ -212,6 +212,7 @@ export function mountAmbientScreen(options: AmbientScreenOptions): AmbientScreen
           intervalMs: start.settings.intervalSeconds * 1000,
           livePhotoMotion: start.settings.livePhotoMotion,
           livePhotoSound: start.settings.livePhotoSound,
+          panPortraits: start.settings.panPortraits,
           onShow(asset) {
             showDetails(asset);
           },

@@ -94,10 +94,25 @@ export function mountAmbientScreen(options: AmbientScreenOptions): AmbientScreen
     timers.set(moveOverlay, ambientOverlayMoveMs);
   }
 
+  // The place on one line and the date and time on the next, each cut short
+  // on its own: one long line was cut off on portrait photos, whose overlay
+  // has room for both. A missing part leaves its line out.
   function showDetails(asset: AlbumAsset): void {
     const metadata = formatViewerMetadata(asset);
+    const when = [metadata.date, metadata.time].filter((part) => part).join(" · ");
 
-    details.textContent = [metadata.date, metadata.location].filter((part) => part).join(" · ");
+    details.textContent = "";
+    [metadata.location, when].forEach((text) => {
+      if (!text) {
+        return;
+      }
+
+      const line = documentRef.createElement("span");
+
+      line.className = "ambient-details-line";
+      line.textContent = text;
+      details.appendChild(line);
+    });
   }
 
   function show(): void {

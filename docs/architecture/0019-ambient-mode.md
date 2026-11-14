@@ -98,7 +98,7 @@ Every source has one interface, `next(): Promise<AlbumAsset | null>`, and holds 
   - **Play video sound** (Settings → Ambient, off by default) plays them with their sound instead. The TV's volume and mute keys stay with the TV (the app doesn't register them), so they set the level without leaving ambient mode. If the TV won't start a video with sound on its own, it plays muted rather than being skipped.
 - **Overlays:**
   - a clock, on by default: the TV's local time in UK 24-hour form ("07:05");
-  - photo details, off by default: the date, and the place when the photo has one, from the viewer's metadata formatting.
+  - photo details, off by default, from the viewer's metadata formatting: the place, when the photo has one, on one line, and the date and time it was taken on the next ("1 Jun 2024 · 10:00"). Each line is cut short on its own. On one line, place and date were cut off on portrait photos, while the overlay had room for a third line.
 
   Both are small and low-contrast.
 - **Burn-in care.** The overlays move between four places inside the safe area every three minutes (`ambientOverlayMoveMs`), so nothing static stays put for long. The pictures themselves change at every interval.

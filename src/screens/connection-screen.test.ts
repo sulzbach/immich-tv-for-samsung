@@ -465,6 +465,7 @@ describe("Settings remote navigation and actions", () => {
       "ambient-video-sound",
       "ambient-live-photo-motion",
       "ambient-live-photo-sound",
+      "ambient-pan-portraits",
       "ambient-show-clock",
       "ambient-show-details",
       "ambient-start"

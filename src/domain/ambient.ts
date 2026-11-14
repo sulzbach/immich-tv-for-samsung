@@ -16,6 +16,8 @@ export type AmbientSettings = {
   livePhotoMotion: boolean;
   // ...with its sound; off (muted) by default.
   livePhotoSound: boolean;
+  // A portrait photo zooms to the screen's width and scrolls to its bottom.
+  panPortraits: boolean;
   // Used only where it applies (ambientOrderApplies); shuffle otherwise.
   order: AmbientOrder;
   showClock: boolean;
@@ -51,6 +53,7 @@ export const defaultAmbientSettings: AmbientSettings = {
   intervalSeconds: 30,
   livePhotoMotion: false,
   livePhotoSound: false,
+  panPortraits: false,
   order: "shuffle",
   showClock: true,
   showDetails: false,
@@ -89,6 +92,7 @@ export function normalizeAmbientSettings(value: unknown): AmbientSettings {
     ),
     livePhotoMotion: stored.livePhotoMotion === true,
     livePhotoSound: stored.livePhotoSound === true,
+    panPortraits: stored.panPortraits === true,
     order: stored.order === "in-order" ? "in-order" : "shuffle",
     showClock: stored.showClock !== false,
     showDetails: stored.showDetails === true,

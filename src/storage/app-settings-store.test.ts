@@ -81,6 +81,7 @@ describe("app settings store", () => {
         stopAfterHours: 2,
         livePhotoMotion: true,
         livePhotoSound: true,
+        panPortraits: true,
         videoSound: true
       },
       autoplayVideos: true,

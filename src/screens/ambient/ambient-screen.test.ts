@@ -14,6 +14,9 @@ import {
   ambientMotionEndMarginMs,
   ambientMotionDownloadWaitMs,
   ambientMotionStartWaitMs,
+  ambientPanHoldMs,
+  ambientPanSpeedPxPerS,
+  ambientPanZoomMs,
   ambientVideoCapMs
 } from "./ambient-player";
 import {
@@ -236,6 +239,55 @@ describe("ambient presentation", () => {
     decoded();
     await flush();
     expect(f.incoming()).toEqual(["blob:a1"]);
+  });
+
+  it("pans a portrait photo: zoom to the width, scroll to the bottom, then move on", async () => {
+    const f = fixture();
+    ["ambient-layer-a", "ambient-layer-b"].forEach((id) => {
+      const image = byId<HTMLImageElement>(id);
+      // A 3:4 portrait preview, shown on a 1920x1080 screen.
+      Object.defineProperty(image, "naturalWidth", { configurable: true, get: () => 1080 });
+      Object.defineProperty(image, "naturalHeight", { configurable: true, get: () => 1440 });
+      image.getBoundingClientRect = () => ({ height: 1080, width: 1920 }) as DOMRect;
+    });
+    await screen!.start({
+      quiet: false,
+      settings: settings({ panPortraits: true }),
+      source: sequenceSource()
+    });
+    await flush();
+    const image = byId<HTMLImageElement>("ambient-layer-a");
+    expect(image.style.transform).toBe("");
+
+    // Once faded in, it zooms from its top to the screen's width...
+    await f.endFade();
+    const scale = 1920 / 810;
+    const travel = 1080 * scale - 1080;
+    expect(image.hasAttribute("data-panning")).toBe(true);
+    expect(image.style.transformOrigin).toBe("50% 0");
+    expect(image.style.transform).toBe(`scale(${scale})`);
+
+    // ...then scrolls to its bottom.
+    await vi.advanceTimersByTimeAsync(ambientPanZoomMs);
+    expect(image.style.transform).toBe(`translateY(${-travel}px) scale(${scale})`);
+
+    // It stays for the pan and a pause, longer than the 10 s interval.
+    const scrollMs = Math.round((travel / ambientPanSpeedPxPerS) * 1000);
+    await vi.advanceTimersByTimeAsync(scrollMs + ambientPanHoldMs - 1);
+    expect(f.incoming()).toEqual([]);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(f.incoming()).toEqual(["blob:a1"]);
+    await f.endFade();
+    expect(image.style.transform).toBe("");
+  });
+
+  it("leaves landscape photos and Pan portrait photos off alone", async () => {
+    fixture();
+    await screen!.start({ quiet: false, settings: settings(), source: sequenceSource() });
+    await flush();
+    await vi.advanceTimersByTimeAsync(2000);
+
+    expect(byId("ambient-layer-a").hasAttribute("data-panning")).toBe(false);
   });
 
   it("shows the clock and details, and moves them on their timer", async () => {

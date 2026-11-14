@@ -20,6 +20,7 @@ describe("ambient settings", () => {
       stopAfterHours: 0,
       livePhotoMotion: false,
       livePhotoSound: false,
+      panPortraits: false,
       videoSound: false
     });
   });

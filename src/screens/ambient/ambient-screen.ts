@@ -228,6 +228,7 @@ export function mountAmbientScreen(options: AmbientScreenOptions): AmbientScreen
           videoSound: start.settings.videoSound,
           livePhotoMotion: start.settings.livePhotoMotion,
           livePhotoSound: start.settings.livePhotoSound,
+          panPortraits: start.settings.panPortraits,
           onShow(asset) {
             showDetails(asset);
           },

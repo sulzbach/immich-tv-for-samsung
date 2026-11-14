@@ -124,8 +124,10 @@
      dark: solid text with a thin dark outline that follows each letter,
      and a soft halo around it. */
   --ambient-text: #eef3fc;
-  --ambient-text-detail: #d6e0ef;
+  --ambient-text-detail: #eef3fc;
   --ambient-text-outline: rgba(0, 0, 0, 0.8);
+  /* The details are small, so their outline is denser than the clock's. */
+  --ambient-text-outline-strong: rgba(0, 0, 0, 0.92);
   --ambient-text-halo: rgba(0, 0, 0, 0.45);
   color-scheme: dark;
   font-family: Arial, Helvetica, sans-serif;
@@ -230,6 +232,7 @@
   --ambient-text: #ffffff;
   --ambient-text-detail: #e0e0e0;
   --ambient-text-outline: transparent;
+  --ambient-text-outline-strong: transparent;
   --ambient-text-halo: transparent;
 }
 
@@ -3232,8 +3235,18 @@ button.asset-viewer-faces[aria-pressed="true"]:focus {
 .ambient-details {
   margin: 8px 0 0;
   color: var(--ambient-text-detail);
-  font-size: 24px;
-  font-weight: 600;
+  font-size: 26px;
+  font-weight: 700;
+  /* Small text needs a denser outline than the clock to stand out on a
+     bright photo: tight shadows to each side, then the halo. */
+  text-shadow:
+    0 0 1px var(--ambient-text-outline-strong),
+    1px 0 1px var(--ambient-text-outline-strong),
+    -1px 0 1px var(--ambient-text-outline-strong),
+    0 1px 1px var(--ambient-text-outline-strong),
+    0 -1px 1px var(--ambient-text-outline-strong),
+    0 0 3px var(--ambient-text-outline),
+    0 0 14px var(--ambient-text-halo);
 }
 
 /* The place, then the date and time, each on its own line and cut short on

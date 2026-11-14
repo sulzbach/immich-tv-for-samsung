@@ -129,6 +129,9 @@
   /* The details are small, so their outline is denser than the clock's. */
   --ambient-text-outline-strong: rgba(0, 0, 0, 0.92);
   --ambient-text-halo: rgba(0, 0, 0, 0.45);
+  /* A soft, borderless darkening behind the clock and details, for nearly
+     white photos (snow, a bright sky) where an outline alone is faint. */
+  --ambient-scrim: rgba(0, 0, 0, 0.38);
   color-scheme: dark;
   font-family: Arial, Helvetica, sans-serif;
   background: var(--surface);
@@ -234,6 +237,7 @@
   --ambient-text-outline: transparent;
   --ambient-text-outline-strong: transparent;
   --ambient-text-halo: transparent;
+  --ambient-scrim: transparent;
 }
 
 * {
@@ -3189,6 +3193,9 @@ button.asset-viewer-faces[aria-pressed="true"]:focus {
 .ambient-overlay {
   position: absolute;
   z-index: 3;
+  /* Its own stacking context, so the scrim (z-index -1) stays behind the
+     text but in front of the picture. */
+  isolation: isolate;
   max-width: 760px;
   color: var(--ambient-text);
   /* Tight shadows all round make the outline; the wide one, the halo. */
@@ -3200,6 +3207,21 @@ button.asset-viewer-faces[aria-pressed="true"]:focus {
   padding: var(--overlay-plate-padding);
   border-radius: var(--overlay-plate-radius);
   background: var(--overlay-plate);
+}
+
+/* The scrim: a radial darkening that fades to nothing at its edges, wider
+   than the text and moving with it. Offsets, not `inset`, which Chromium 63
+   lacks. */
+.ambient-overlay::before {
+  position: absolute;
+  top: -48px;
+  right: -64px;
+  bottom: -48px;
+  left: -64px;
+  z-index: -1;
+  background: radial-gradient(closest-side, var(--ambient-scrim), transparent);
+  content: "";
+  pointer-events: none;
 }
 
 .ambient-overlay[data-position="0"] {
@@ -3245,8 +3267,10 @@ button.asset-viewer-faces[aria-pressed="true"]:focus {
     -1px 0 1px var(--ambient-text-outline-strong),
     0 1px 1px var(--ambient-text-outline-strong),
     0 -1px 1px var(--ambient-text-outline-strong),
-    0 0 3px var(--ambient-text-outline),
-    0 0 14px var(--ambient-text-halo);
+    1px 1px 2px var(--ambient-text-outline-strong),
+    -1px -1px 2px var(--ambient-text-outline-strong),
+    0 0 6px var(--ambient-text-outline),
+    0 0 18px var(--ambient-text-halo);
 }
 
 /* The place, then the date and time, each on its own line and cut short on

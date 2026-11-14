@@ -647,11 +647,32 @@ export function createAmbientPlayer(options: AmbientPlayerOptions): AmbientPlaye
   };
 }
 
-// Sound on or off. Off sets the volume to 0 as well as muting: on the TV a
-// Live Photo's motion was heard although the video was muted.
+// The media element's audio tracks, where the engine has them (Samsung's
+// video element guide lists audioTracks; Chromium 63 has no AudioTrackList).
+type AudioTrackSwitches = { length: number; [index: number]: { enabled: boolean } };
+
+// Sound on or off. Off mutes, sets the volume to 0 and, where the engine has
+// audio tracks, turns the file's own audio track off: on the TV (Tizen 8.0)
+// a Live Photo's motion, an iPhone .mov with PCM audio that Immich serves as
+// it is, was heard although muted at volume 0. Audio tracks are listed only
+// once the file's metadata has loaded, so this is applied again then.
 function setSound(video: HTMLVideoElement, on: boolean): void {
   video.muted = !on;
   video.volume = on ? 1 : 0;
+
+  const tracks = (video as HTMLVideoElement & { audioTracks?: AudioTrackSwitches }).audioTracks;
+
+  if (!tracks) {
+    return;
+  }
+
+  for (let index = 0; index < tracks.length; index += 1) {
+    const track = tracks[index];
+
+    if (track) {
+      track.enabled = on;
+    }
+  }
 }
 
 // Fades `image` in above everything else on the ambient screen, resolving

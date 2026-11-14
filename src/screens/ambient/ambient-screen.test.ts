@@ -467,6 +467,38 @@ describe("ambient presentation", () => {
     expect(f.video.volume).toBe(0);
   });
 
+  it("turns a Live Photo's audio track off, where the TV lists audio tracks", async () => {
+    const f = fixture();
+    const tracks: { enabled: boolean }[] = [];
+    Object.defineProperty(f.video, "audioTracks", { configurable: true, get: () => tracks });
+    await screen!.start({
+      quiet: false,
+      settings: settings({ livePhotoMotion: true }),
+      source: sequenceSource((i) => asset(`l${i}`, { livePhotoVideoId: `motion${i}` }))
+    });
+    await flush();
+
+    // The file's tracks are listed once its metadata has loaded.
+    tracks.push({ enabled: true });
+    f.video.dispatchEvent(new Event("loadedmetadata"));
+    expect(tracks[0]!.enabled).toBe(false);
+  });
+
+  it("leaves a Live Photo's audio track on when Play Live Photo sound is on", async () => {
+    const f = fixture();
+    const tracks = [{ enabled: false }];
+    Object.defineProperty(f.video, "audioTracks", { configurable: true, get: () => tracks });
+    await screen!.start({
+      quiet: false,
+      settings: settings({ livePhotoMotion: true, livePhotoSound: true }),
+      source: sequenceSource((i) => asset(`l${i}`, { livePhotoVideoId: `motion${i}` }))
+    });
+    await flush();
+
+    f.video.dispatchEvent(new Event("loadedmetadata"));
+    expect(tracks[0]!.enabled).toBe(true);
+  });
+
   it("plays a Live Photo's sound when Play Live Photo sound is on", async () => {
     const f = fixture();
     await screen!.start({

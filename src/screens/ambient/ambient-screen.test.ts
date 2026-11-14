@@ -15,7 +15,6 @@ import {
   ambientMotionDownloadWaitMs,
   ambientMotionStartWaitMs,
   ambientPanHoldMs,
-  ambientPanSpeedPxPerS,
   ambientPanZoomMs,
   ambientVideoCapMs
 } from "./ambient-player";
@@ -252,11 +251,15 @@ describe("ambient presentation", () => {
     });
     await screen!.start({
       quiet: false,
-      settings: settings({ panPortraits: true }),
+      settings: settings({ panPortraits: true, panSpeed: 60 }),
       source: sequenceSource()
     });
     await flush();
     const image = byId<HTMLImageElement>("ambient-layer-a");
+    const transitionEnds = async () => {
+      image.dispatchEvent(new Event("transitionend"));
+      await flush();
+    };
     expect(image.style.transform).toBe("");
 
     // Once faded in, it zooms from its top to the screen's width...
@@ -266,19 +269,47 @@ describe("ambient presentation", () => {
     expect(image.hasAttribute("data-panning")).toBe(true);
     expect(image.style.transformOrigin).toBe("50% 0");
     expect(image.style.transform).toBe(`scale(${scale})`);
+    expect(image.style.transition).toBe(`transform ${ambientPanZoomMs}ms ease-in-out`);
 
-    // ...then scrolls to its bottom.
+    // ...and only once the zoom has ended, scrolls to its bottom, at 60 px/s.
     await vi.advanceTimersByTimeAsync(ambientPanZoomMs);
+    expect(image.style.transform).toBe(`scale(${scale})`);
+    await transitionEnds();
+    const scrollMs = Math.round((travel / 60) * 1000);
     expect(image.style.transform).toBe(`translateY(${-travel}px) scale(${scale})`);
+    expect(image.style.transition).toBe(`transform ${scrollMs}ms ease-in-out`);
 
-    // It stays for the pan and a pause, longer than the 10 s interval.
-    const scrollMs = Math.round((travel / ambientPanSpeedPxPerS) * 1000);
-    await vi.advanceTimersByTimeAsync(scrollMs + ambientPanHoldMs - 1);
+    // The picture stays until the scroll has ended, then a pause.
+    await vi.advanceTimersByTimeAsync(20000);
+    expect(f.incoming()).toEqual([]);
+    await transitionEnds();
+    await vi.advanceTimersByTimeAsync(ambientPanHoldMs - 1);
     expect(f.incoming()).toEqual([]);
     await vi.advanceTimersByTimeAsync(1);
     expect(f.incoming()).toEqual(["blob:a1"]);
     await f.endFade();
     expect(image.style.transform).toBe("");
+  });
+
+  it("finishes a pan whose transitions never report their end", async () => {
+    const f = fixture();
+    ["ambient-layer-a", "ambient-layer-b"].forEach((id) => {
+      const image = byId<HTMLImageElement>(id);
+      Object.defineProperty(image, "naturalWidth", { configurable: true, get: () => 1080 });
+      Object.defineProperty(image, "naturalHeight", { configurable: true, get: () => 1440 });
+      image.getBoundingClientRect = () => ({ height: 1080, width: 1920 }) as DOMRect;
+    });
+    await screen!.start({
+      quiet: false,
+      settings: settings({ panPortraits: true }),
+      source: sequenceSource()
+    });
+    await flush();
+    await f.endFade();
+
+    // Zoom and scroll each end a little after their length.
+    await vi.advanceTimersByTimeAsync(40000);
+    expect(f.visible()).not.toContain("blob:a0");
   });
 
   it("leaves landscape photos and Pan portrait photos off alone", async () => {

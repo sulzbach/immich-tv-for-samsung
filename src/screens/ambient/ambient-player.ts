@@ -39,7 +39,6 @@ export const ambientMotionEndMarginMs = 300;
 // Pan portrait photos: the zoom to the screen's width, the scroll's speed
 // down the photo, and the pause on its bottom before the next picture.
 export const ambientPanZoomMs = 2000;
-export const ambientPanSpeedPxPerS = 80;
 export const ambientPanHoldMs = 1000;
 export const ambientMotionStartWaitMs = 4000;
 // Of that, how long a motion still downloading may be waited for before it
@@ -69,8 +68,10 @@ type AmbientPlayerOptions = {
   livePhotoMotion: boolean;
   // ...with its sound; muted otherwise.
   livePhotoSound: boolean;
-  // A portrait photo zooms to the screen's width, then scrolls to its bottom.
+  // A portrait photo zooms to the screen's width, then scrolls to its bottom
+  // at this speed.
   panPortraits: boolean;
+  panSpeedPxPerS: number;
   // A picture is now showing (for its details).
   onShow(asset: AlbumAsset): void;
   onState(state: AmbientPlayerState): void;
@@ -443,27 +444,45 @@ export function createAmbientPlayer(options: AmbientPlayerOptions): AmbientPlaye
     }
 
     const expected = generation;
-    const scrollMs = Math.round((travel / ambientPanSpeedPxPerS) * 1000);
+    const startedAt = Date.now();
+    const scrollMs = Math.round((travel / options.panSpeedPxPerS) * 1000);
+    const stillPanning = () => isCurrent(expected) && layer(front) === image;
 
-    image.setAttribute("data-panning", "true");
-    image.style.transformOrigin = "50% 0";
-    image.style.transition = `transform ${ambientPanZoomMs}ms ease-in-out`;
-    image.style.transform = `scale(${scale})`;
-    timers.set(() => {
-      if (isCurrent(expected) && layer(front) === image) {
-        image.style.transition = `transform ${scrollMs}ms ease-in-out`;
-        image.style.transform = `translateY(${-travel}px) scale(${scale})`;
-      }
-    }, ambientPanZoomMs);
-
+    // The picture stays until its pan has ended: the dwell is set again then.
     if (dwellTimer !== null) {
       timers.clear(dwellTimer);
+      dwellTimer = null;
     }
 
-    dwellTimer = timers.set(
-      endDwell,
-      Math.max(options.intervalMs, ambientPanZoomMs + scrollMs + ambientPanHoldMs)
-    );
+    // Each stage starts once the browser reports the last one ended: on the
+    // TV a transition can start late, and starting the scroll on a timer
+    // caught the zoom half-way, so the photo zoomed while it scrolled.
+    image.setAttribute("data-panning", "true");
+    image.style.transformOrigin = "50% 0";
+    void animateTransform(image, `scale(${scale})`, ambientPanZoomMs, timers)
+      .then(() => {
+        if (!stillPanning()) {
+          return Promise.reject(new Error("Pan ended."));
+        }
+
+        return animateTransform(
+          image,
+          `translateY(${-travel}px) scale(${scale})`,
+          scrollMs,
+          timers
+        );
+      })
+      .then(
+        () => {
+          if (stillPanning()) {
+            dwellTimer = timers.set(
+              endDwell,
+              Math.max(ambientPanHoldMs, options.intervalMs - (Date.now() - startedAt))
+            );
+          }
+        },
+        () => undefined
+      );
   }
 
   // How long the current asset stays: the interval, or a video's length up
@@ -857,6 +876,34 @@ type PreloadedMotion = {
   released: boolean;
   url: string | null;
 };
+
+// Moves `image` to `transform` over `durationMs`, resolving when the browser
+// reports the transition's end, or a little after its length if it never
+// does (an interrupted transition).
+function animateTransform(
+  image: HTMLImageElement,
+  transform: string,
+  durationMs: number,
+  timers: AmbientTimers
+): Promise<void> {
+  return new Promise((resolve) => {
+    const finish = () => {
+      image.removeEventListener("transitionend", handleEnd);
+      timers.clear(timer);
+      resolve();
+    };
+    const handleEnd = (event: Event) => {
+      if (event.target === image) {
+        finish();
+      }
+    };
+    const timer = timers.set(finish, durationMs + ambientFadeGraceMs);
+
+    image.addEventListener("transitionend", handleEnd);
+    image.style.transition = `transform ${durationMs}ms ease-in-out`;
+    image.style.transform = transform;
+  });
+}
 
 // Takes a layer back from a portrait pan, without animating.
 function resetPan(image: HTMLImageElement): void {

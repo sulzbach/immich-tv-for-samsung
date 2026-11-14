@@ -216,18 +216,28 @@ export function createAmbientPlayer(options: AmbientPlayerOptions): AmbientPlaye
 
     const first = layer(front);
 
+    // As for every later picture, its details change once it is fully shown:
+    // shown with the fade's start, they appeared over black before the
+    // picture did.
     void fadeIn(first, timers).then(() => {
       if (isCurrent(expected)) {
         first.removeAttribute("data-incoming");
+        options.onShow(asset);
       }
     });
-    shown(asset);
+    shown(asset, false);
   }
 
-  function shown(asset: AlbumAsset): void {
+  // `details`: tell the screen which picture shows (for its details) now,
+  // or leave that to the caller.
+  function shown(asset: AlbumAsset, details = true): void {
     skips = 0;
     backoffMs = ambientBackoffStartMs;
-    options.onShow(asset);
+
+    if (details) {
+      options.onShow(asset);
+    }
+
     options.onState({ kind: "playing" });
     dwell(asset);
     void fetchNext();

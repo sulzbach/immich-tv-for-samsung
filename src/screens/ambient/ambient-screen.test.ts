@@ -225,7 +225,7 @@ describe("ambient presentation", () => {
   });
 
   it("shows the clock and details, and moves them on their timer", async () => {
-    fixture();
+    const f = fixture();
     await screen!.start({
       quiet: false,
       settings: settings({ showDetails: true }),
@@ -235,6 +235,9 @@ describe("ambient presentation", () => {
 
     expect(byId("ambient-clock").textContent).toBe("07:05");
     expect(byId("ambient-clock").hidden).toBe(false);
+    // The first picture's details wait for its fade, like every later one's.
+    expect(byId("ambient-details").textContent).toBe("");
+    await f.endFade();
     // The place on one line, the date and time on the next.
     expect(Array.from(byId("ambient-details").children).map((line) => line.textContent)).toEqual([
       "Exampleton, Exampleland",
@@ -249,13 +252,14 @@ describe("ambient presentation", () => {
   });
 
   it("leaves the place line out when a photo has no place", async () => {
-    fixture();
+    const f = fixture();
     await screen!.start({
       quiet: false,
       settings: settings({ showDetails: true }),
       source: sequenceSource((i) => asset(`a${i}`, { location: null }))
     });
     await flush();
+    await f.endFade();
 
     expect(Array.from(byId("ambient-details").children).map((line) => line.textContent)).toEqual([
       "1 Jun 2024 · 10:00"

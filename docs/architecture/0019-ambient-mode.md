@@ -86,11 +86,14 @@ Every source has one interface, `next(): Promise<AlbumAsset | null>`, and holds 
 - **No new media engine.** Pictures go through the viewer's bounded image window (`asset-viewer-window.ts`: preview loading, at most three requests in flight, revoking anything outside the window) and the shared media helpers (`media-elements.ts`).
 - **The playlist holds at most three assets:** the outgoing one while it fades, the current one, and the next, preloaded.
   - **Crossfade** between two `<img>` layers by CSS opacity alone (1.5 s; no filters, no transforms). The incoming picture is shown only once it has decoded, waiting at most 5 s.
+    - Only the incoming layer animates. It fades in on top, on black, while the outgoing picture stays fully opaque beneath it. Fading both layers at once let the black background show through mid-fade (two half-transparent layers cover only three quarters), which on the TV read as a black frame between pictures.
+    - "Decoded" means `HTMLImageElement.decode()` where the browser has it (newer than Chromium 63), and the load event alone on Tizen 5.0.
+    - The fade ends when the browser reports it (`transitionend`), or at the latest 1 s after its length (`ambientFadeGraceMs`). On the TV a fade can start late, and ending it on a 1.5 s timer cut it short with a visible jump.
   - **The outgoing layer** is cleared, and its preview URL revoked, as soon as the fade ends.
   - So at most two pictures are ever decoded on screen, and at most three preview URLs are held.
 - **Pictures are shown whole** (`object-fit: contain`) on black, so faces at the edges are never cropped.
 - **Interval:** 10 s, 20 s, 30 s (default), 1 min, 2 min or 5 min.
-- **Videos** play muted in a single `<video>` over their poster, until they end or for at most 60 s (`ambientVideoCapMs`), then the next picture fades in.
+- **Videos** play muted in a single `<video>` over their poster, until they end or for at most 60 s (`ambientVideoCapMs`), then the next picture fades in over the video, paused on its last frame. The video is released once the fade ends, not as it starts, so it never disappears from under the incoming picture.
 - **Overlays:**
   - a clock, on by default: the TV's local time in UK 24-hour form ("07:05");
   - photo details, off by default: the date, and the place when the photo has one, from the viewer's metadata formatting.

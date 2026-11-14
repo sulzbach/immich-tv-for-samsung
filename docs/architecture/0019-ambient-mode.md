@@ -94,6 +94,7 @@ Every source has one interface, `next(): Promise<AlbumAsset | null>`, and holds 
 - **Pictures are shown whole** (`object-fit: contain`) on black, so faces at the edges are never cropped.
 - **Interval:** 10 s, 20 s, 30 s (default), 1 min, 2 min or 5 min.
 - **Videos** play muted in a single `<video>` over their poster, until they end or for at most 60 s (`ambientVideoCapMs`), then the next picture fades in over the video, paused on its last frame. The video is released once the fade ends, not as it starts, so it never disappears from under the incoming picture.
+  - The video stays transparent over its poster (`data-waiting`) until its playback has moved past the start (`timeupdate` with `currentTime > 0`). Shown at once, it was black, or jumped from the poster, while the TV started its decoder and the first data arrived over the network.
 - **Overlays:**
   - a clock, on by default: the TV's local time in UK 24-hour form ("07:05");
   - photo details, off by default: the date, and the place when the photo has one, from the viewer's metadata formatting.

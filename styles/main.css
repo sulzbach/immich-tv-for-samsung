@@ -3168,6 +3168,12 @@ button.asset-viewer-faces[aria-pressed="true"]:focus {
   background: #000000;
 }
 
+/* Until it shows frames, the video lets its poster through. */
+.ambient-video[data-waiting] {
+  opacity: 0;
+  background: transparent;
+}
+
 .ambient-overlay {
   position: absolute;
   z-index: 3;

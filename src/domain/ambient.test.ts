@@ -17,8 +17,14 @@ describe("ambient settings", () => {
       showDetails: false,
       source: "all",
       startAfterIdleMinutes: 0,
-      stopAfterHours: 0
+      stopAfterHours: 0,
+      openOnPowerOn: false
     });
+  });
+
+  it("keeps Open when the TV turns on off unless saved on", () => {
+    expect(normalizeAmbientSettings({ openOnPowerOn: true }).openOnPowerOn).toBe(true);
+    expect(normalizeAmbientSettings({ openOnPowerOn: "yes" }).openOnPowerOn).toBe(false);
   });
 
   it("offers In order only for an album and Memories", () => {

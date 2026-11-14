@@ -12,15 +12,36 @@ export type TizenTvInputDevice = {
   registerKeyBatch?(names: string[]): void;
 };
 
-// Application API (since Tizen 2.0, no privilege required):
-// tizen.application.getCurrentApplication().exit()
+// Application API (since Tizen 2.0): exit() needs no privilege;
+// launchAppControl needs http://tizen.org/privilege/application.launch
+// (public). getRequestedAppControl() gives the request the app was last
+// launched with, its data as key/value-list pairs.
+export type TizenApplicationControlData = { key: string; value: string[] };
+
 export type TizenApplicationManager = {
   getCurrentApplication(): {
     exit(): void;
+    getRequestedAppControl?(): {
+      appControl?: { data?: TizenApplicationControlData[] };
+    } | null;
   };
+  launchAppControl?(
+    appControl: unknown,
+    id: string,
+    onsuccess?: () => void,
+    onerror?: (error: { message: string; name: string }) => void
+  ): void;
 };
 
 export type TizenRuntime = {
+  ApplicationControl?: new (
+    operation: string,
+    uri?: string | null,
+    mime?: string | null,
+    category?: string | null,
+    data?: unknown[]
+  ) => unknown;
+  ApplicationControlData?: new (key: string, value: string[]) => unknown;
   application?: TizenApplicationManager;
   tvinputdevice?: TizenTvInputDevice;
 };

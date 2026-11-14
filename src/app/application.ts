@@ -1,3 +1,4 @@
+import type { AmbientOnPowerOn } from "../platform/tizen/ambient-on-power-on";
 import type { Album, AlbumAsset, AlbumAssetPage, AlbumAssetPageToken } from "../domain/album";
 import type { Memory, Person } from "../domain/home";
 import type { SearchAlbum, SearchCriteria, SearchPerson, SearchPlace } from "../domain/search";
@@ -63,6 +64,9 @@ type AppRoute =
 
 export type ApplicationDependencies = {
   albumService: AlbumService;
+  // Open when the TV turns on: the background service's setting and its
+  // requests to start ambient mode (ADR 0024). Absent off the TV.
+  ambientOnPowerOn?: AmbientOnPowerOn;
   connectionService: ConnectionService;
   documentRef?: Document;
   lifecycle: AppLifecycle;
@@ -235,6 +239,7 @@ export function composeApplication(dependencies: ApplicationDependencies): Appli
       applyContrastTheme(documentRef, saved.highContrast);
       showSplashSupport(documentRef, Boolean(dependencies.supportPage), saved.supporter);
       ambient.refresh();
+      configureAmbientOnPowerOn();
     },
     onChooseAmbientAlbum(album) {
       enterChild({ kind: "ambient-album", parent: "settings" }, "search-albums", albumPicker);
@@ -445,11 +450,34 @@ export function composeApplication(dependencies: ApplicationDependencies): Appli
     connectionScreen.focusAmbientAlbum();
   }
 
+  // Gives the background service the saved settings (ADR 0024).
+  function configureAmbientOnPowerOn(): void {
+    const settings = readEffectiveAmbientSettings(settingsStore.load());
+
+    if (dependencies.ambientOnPowerOn) {
+      dependencies.ambientOnPowerOn.configure({
+        enabled: settings.openOnPowerOn
+      });
+    }
+  }
+
+  // Starts ambient mode when the service opened the app for it.
+  function actOnAmbientRequest(): void {
+    if (dependencies.ambientOnPowerOn && dependencies.ambientOnPowerOn.takeRequest()) {
+      if (albumService.loadSettings()) {
+        logger.info("Ambient mode requested as the TV turned on.");
+        ambient.startIdle();
+      }
+    }
+  }
+
   lifecycle.onVisibilityChange((visibility) => {
     if (visibility === "hidden") {
       collectionScreen.suspendPlayback();
       return;
     }
+
+    actOnAmbientRequest();
 
     // Playback stays paused on return. Keep a visible focus target if the TV
     // dropped focus while the app was in the background.
@@ -764,6 +792,8 @@ export function composeApplication(dependencies: ApplicationDependencies): Appli
       }
 
       logger.info("Immich TV app mounted.", { route });
+      configureAmbientOnPowerOn();
+      actOnAmbientRequest();
     }
   };
 }

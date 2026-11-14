@@ -1,6 +1,7 @@
 import { consoleLogger } from "../logging/logger";
 import { createKeepAwake } from "../platform/tizen/keep-awake";
 import { registerOptionalRemoteKeys } from "../platform/tizen/keys";
+import { createAmbientOnPowerOn } from "../platform/tizen/ambient-on-power-on";
 import { createAppLifecycle } from "../platform/tizen/lifecycle";
 import { createPassiveViewing } from "../platform/tizen/screensaver";
 import { createLocalAppSettingsStore } from "../storage/app-settings-store";
@@ -46,6 +47,7 @@ afterNextPaint(() => {
   });
 
   const application = composeApplication({
+    ambientOnPowerOn: createAmbientOnPowerOn(window, consoleLogger),
     albumService: createAlbumService({ fetchImpl, logger: consoleLogger, store }),
     connectionService: createConnectionService({ fetchImpl, logger: consoleLogger, store }),
     lifecycle,

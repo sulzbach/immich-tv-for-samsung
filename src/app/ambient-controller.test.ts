@@ -104,6 +104,25 @@ describe("ambient controller", () => {
     expect(f.screen.start).toHaveBeenCalledWith(expect.objectContaining({ quiet: true }));
   });
 
+  it("starts quietly with the saved settings when the TV was idle on its Home screen", async () => {
+    const f = setup({ canStart: () => false, settings: { intervalSeconds: 60 } });
+
+    // The app's own idle rule doesn't apply: the TV, not the app, was idle.
+    controller!.startIdle();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(f.screen.start).toHaveBeenCalledWith(
+      expect.objectContaining({
+        quiet: true,
+        settings: expect.objectContaining({ intervalSeconds: 60 })
+      })
+    );
+
+    // Not again while it is showing.
+    controller!.startIdle();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(f.screen.start).toHaveBeenCalledTimes(1);
+  });
+
   it("never starts by itself when idle is off, or over a screen it must not cover", async () => {
     let allowed = false;
     const f = setup({ canStart: () => allowed, settings: { startAfterIdleMinutes: 5 } });

@@ -23,7 +23,8 @@ const copiedRuntimeFiles = [
   "icon.png",
   "styles/main.css",
   "scripts/dev-preview.js",
-  "scripts/install-preset.js"
+  "scripts/install-preset.js",
+  "service/ambient-on-power-on.js"
 ];
 
 async function copyRuntimeFile(file) {
@@ -37,6 +38,7 @@ async function copyRuntimeFile(file) {
 async function main() {
   await rm(distDir, { force: true, recursive: true });
   await mkdir(resolve(distDir, "scripts"), { recursive: true });
+  await mkdir(resolve(distDir, "service"), { recursive: true });
 
   await esbuild.build(appBundleOptions(root, { debug: debugBuild, distribution }));
 

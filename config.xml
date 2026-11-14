@@ -8,6 +8,8 @@
   <content src="index.html" />
   <access origin="*" subdomains="true" />
   <feature name="http://tizen.org/feature/screen.size.all" />
+  <!-- Open when the TV turns on (ADR 0024): the bundled service. -->
+  <feature name="http://tizen.org/feature/web.service" />
   <icon src="icon.png" />
   <name>Immich TV for Samsung</name>
   <description>A read-only Immich photo viewer for Samsung Tizen TV.</description>
@@ -15,5 +17,11 @@
   <tizen:profile name="tv-samsung" />
   <tizen:privilege name="http://tizen.org/privilege/internet" />
   <tizen:privilege name="http://tizen.org/privilege/tv.inputdevice" />
-  <tizen:setting pointing-device-support="disable" />
+  <tizen:privilege name="http://tizen.org/privilege/application.launch" />
+  <tizen:service id="imchTV0001.ImmichAmbientService">
+    <tizen:content src="service/ambient-on-power-on.js" />
+    <tizen:name>Immich TV ambient over Home</tizen:name>
+    <tizen:description>Opens Immich TV into ambient mode when the TV comes out of standby.</tizen:description>
+  </tizen:service>
+  <tizen:setting pointing-device-support="disable" background-support="enable" />
 </widget>

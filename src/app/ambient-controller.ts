@@ -50,6 +50,9 @@ export type AmbientController = {
   refresh(): void;
   // Starts now with these settings (the Settings form's current choices).
   startNow(settings: AmbientSettings): void;
+  // Starts quietly with the saved settings, as an idle start does, when the
+  // TV turns on (ADR 0024); not while already active.
+  startIdle(): void;
 };
 
 type Session = {
@@ -274,6 +277,11 @@ export function createAmbientController(options: AmbientControllerOptions): Ambi
     refresh: armIdle,
     startNow(settings) {
       start("manual", settings, documentRef.activeElement, null);
+    },
+    startIdle() {
+      if (!session) {
+        start("idle", options.settings(), documentRef.activeElement, null);
+      }
     }
   };
 }

@@ -8,7 +8,8 @@ const requiredFiles = [
   "icon.png",
   "styles/main.css",
   "scripts/install-preset.js",
-  "scripts/main.js"
+  "scripts/main.js",
+  "service/ambient-on-power-on.js"
 ];
 
 const failures = [];
@@ -108,7 +109,7 @@ try {
 // An explicit file allowlist rejects capture output, Playwright, credentials,
 // source files and any future tooling accidentally copied into dist. The
 // desktop preview script is the sole permitted development file; packaging
-// separately stages its nine-file production allowlist.
+// separately stages its ten-file production allowlist.
 const allowedFiles = new Set([
   ...requiredFiles,
   "assets/app-background.jpg",

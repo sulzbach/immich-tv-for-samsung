@@ -322,6 +322,25 @@ describe("Settings remote navigation and actions", () => {
     );
   });
 
+  it("saves Open when the TV turns on, off by default, ticked from the remote", () => {
+    const { settingsStore } = mount();
+    controller!.show({ allowBack: true });
+    const onPowerOn = byId<HTMLInputElement>("ambient-on-power-on");
+    expect(onPowerOn.checked).toBe(false);
+
+    onPowerOn.focus();
+    pressKey(remoteKeys.enter);
+    expect(onPowerOn.checked).toBe(true);
+
+    byId("settings-save").focus();
+    pressKey(remoteKeys.enter);
+    expect(settingsStore.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ambient: expect.objectContaining({ openOnPowerOn: true })
+      })
+    );
+  });
+
   it("shows Include videos locked when the OLED keep-awake was saved on", () => {
     mount({
       appSettings: {
@@ -426,7 +445,7 @@ describe("Settings remote navigation and actions", () => {
 
     // Every control is reachable with Down, in order.
     const reached: string[] = [];
-    for (let step = 0; step < 7; step += 1) {
+    for (let step = 0; step < 8; step += 1) {
       pressKey(remoteKeys.down);
       reached.push(document.activeElement?.id || "");
     }
@@ -437,6 +456,7 @@ describe("Settings remote navigation and actions", () => {
       "ambient-include-videos",
       "ambient-show-clock",
       "ambient-show-details",
+      "ambient-on-power-on",
       "ambient-start"
     ]);
 

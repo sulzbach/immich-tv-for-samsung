@@ -1,6 +1,7 @@
 import {
   ambientIdleOptions,
   ambientIntervalOptions,
+  ambientPanSpeedOptions,
   ambientOrderApplies,
   ambientSources,
   ambientStopOptions,
@@ -11,6 +12,7 @@ import {
 import {
   ambientSourceLabels,
   formatAmbientIdle,
+  formatAmbientPanSpeed,
   formatAmbientSeconds,
   formatAmbientStop
 } from "../../presentation/ambient-labels";
@@ -45,6 +47,9 @@ export function createAmbientSection(documentRef: Document): AmbientSection {
   );
   const livePhotoSound = requireElement<HTMLInputElement>(documentRef, "ambient-live-photo-sound");
   const panPortraits = requireElement<HTMLInputElement>(documentRef, "ambient-pan-portraits");
+  const panHint = requireElement(documentRef, "ambient-pan-portraits-hint");
+  const panHintText = panHint.textContent || "";
+  const panSpeedField = requireElement(documentRef, "ambient-pan-speed-field");
   const videoChoices = [
     lockableChoice(includeVideos, requireElement(documentRef, "ambient-include-videos-hint")),
     lockableChoice(livePhotoMotion, requireElement(documentRef, "ambient-live-photo-motion-hint"))
@@ -84,6 +89,14 @@ export function createAmbientSection(documentRef: Document): AmbientSection {
       value: String(minutes)
     }))
   });
+  const panSpeed = mountSettingsDropdown({
+    control: requireElement<HTMLButtonElement>(documentRef, "ambient-pan-speed"),
+    name: "Pan speed",
+    options: ambientPanSpeedOptions.map((pixels) => ({
+      label: formatAmbientPanSpeed(pixels),
+      value: String(pixels)
+    }))
+  });
   const stop = mountSettingsDropdown({
     control: requireElement<HTMLButtonElement>(documentRef, "ambient-stop"),
     name: "Stop after",
@@ -102,8 +115,40 @@ export function createAmbientSection(documentRef: Document): AmbientSection {
     albumButton.setAttribute("aria-label", album ? `Album: ${album.name}` : "Choose an album");
   }
 
+  // Pan portrait photos and Play Live Photo motion don't go together (a
+  // panning photo with motion playing over it): turning the motion on turns
+  // the pan off and locks it; turning the motion off unlocks the pan and,
+  // when the change is the viewer's, turns it on. Pan speed shows only while
+  // the pan can play.
+  function updatePan(motionChangedByViewer: boolean): void {
+    if (livePhotoMotion.checked) {
+      panPortraits.checked = false;
+      panPortraits.setAttribute("aria-disabled", "true");
+      panHint.textContent = "Off while Play Live Photo motion is on.";
+    } else {
+      if (panPortraits.getAttribute("aria-disabled") === "true" && motionChangedByViewer) {
+        panPortraits.checked = true;
+      }
+
+      panPortraits.removeAttribute("aria-disabled");
+      panHint.textContent = panHintText;
+    }
+
+    panSpeedField.hidden = !panPortraits.checked;
+  }
+
+  livePhotoMotion.addEventListener("change", () => updatePan(true));
+  panPortraits.addEventListener("change", () => updatePan(false));
+  // A pointer click can't tick it while it is locked.
+  panPortraits.addEventListener("click", (event) => {
+    if (panPortraits.getAttribute("aria-disabled") === "true") {
+      event.preventDefault();
+    }
+  });
+
   function setVideosAllowed(allowed: boolean): void {
     videoChoices.forEach((choice) => choice.setAllowed(allowed));
+    updatePan(false);
   }
 
   function current(): AmbientSettings {
@@ -114,6 +159,7 @@ export function createAmbientSection(documentRef: Document): AmbientSection {
       livePhotoMotion: livePhotoMotion.checked,
       livePhotoSound: livePhotoSound.checked,
       panPortraits: panPortraits.checked,
+      panSpeed: Number(panSpeed.value()),
       order: order.value(),
       showClock: showClock.checked,
       showDetails: showDetails.checked,
@@ -127,7 +173,7 @@ export function createAmbientSection(documentRef: Document): AmbientSection {
   return {
     button: requireElement<HTMLButtonElement>(documentRef, "settings-section-ambient"),
     current,
-    dropdowns: [source, order, interval, idle, stop],
+    dropdowns: [source, order, interval, idle, stop, panSpeed],
     firstControl: () => source.control,
     id: "ambient",
     panel: requireElement(documentRef, "settings-panel-ambient"),
@@ -152,10 +198,12 @@ export function createAmbientSection(documentRef: Document): AmbientSection {
       livePhotoMotion.checked = ambient.livePhotoMotion;
       livePhotoSound.checked = ambient.livePhotoSound;
       panPortraits.checked = ambient.panPortraits;
+      panSpeed.setValue(String(ambient.panSpeed));
       showClock.checked = ambient.showClock;
       showDetails.checked = ambient.showDetails;
       setVideosAllowed(!settings.oledKeepAwake);
       updateFields();
+      updatePan(false);
     },
     snapshot: current
   };

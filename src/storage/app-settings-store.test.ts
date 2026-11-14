@@ -82,6 +82,7 @@ describe("app settings store", () => {
         livePhotoMotion: true,
         livePhotoSound: true,
         panPortraits: true,
+        panSpeed: 120,
         videoSound: true
       },
       autoplayVideos: true,

@@ -16,8 +16,10 @@ export type AmbientSettings = {
   livePhotoMotion: boolean;
   // ...with its sound; off (muted) by default.
   livePhotoSound: boolean;
-  // A portrait photo zooms to the screen's width and scrolls to its bottom.
+  // A portrait photo zooms to the screen's width and scrolls to its bottom,
+  // at this many pixels a second.
   panPortraits: boolean;
+  panSpeed: number;
   // Used only where it applies (ambientOrderApplies); shuffle otherwise.
   order: AmbientOrder;
   showClock: boolean;
@@ -35,6 +37,7 @@ export const ambientSources: AmbientSource[] = ["all", "favorites", "recent", "a
 export const ambientIntervalOptions = [10, 20, 30, 60, 120, 300];
 export const ambientIdleOptions = [0, 5, 10, 15, 30];
 export const ambientStopOptions = [0, 1, 2, 4];
+export const ambientPanSpeedOptions = [40, 60, 80, 120];
 
 // Recent means taken in the last this many days.
 export const ambientRecentDays = 90;
@@ -54,6 +57,7 @@ export const defaultAmbientSettings: AmbientSettings = {
   livePhotoMotion: false,
   livePhotoSound: false,
   panPortraits: false,
+  panSpeed: 80,
   order: "shuffle",
   showClock: true,
   showDetails: false,
@@ -93,6 +97,7 @@ export function normalizeAmbientSettings(value: unknown): AmbientSettings {
     livePhotoMotion: stored.livePhotoMotion === true,
     livePhotoSound: stored.livePhotoSound === true,
     panPortraits: stored.panPortraits === true,
+    panSpeed: oneOf(stored.panSpeed, ambientPanSpeedOptions, defaultAmbientSettings.panSpeed),
     order: stored.order === "in-order" ? "in-order" : "shuffle",
     showClock: stored.showClock !== false,
     showDetails: stored.showDetails === true,

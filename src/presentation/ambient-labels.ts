@@ -10,6 +10,19 @@ export const ambientSourceLabels: Record<AmbientSource, string> = {
   recent: "Recent"
 };
 
+// Pan portrait photos' scroll speeds, in pixels a second.
+export function formatAmbientPanSpeed(pixelsPerSecond: number): string {
+  if (pixelsPerSecond <= 40) {
+    return "Very slow";
+  }
+
+  if (pixelsPerSecond <= 60) {
+    return "Slow";
+  }
+
+  return pixelsPerSecond <= 80 ? "Medium" : "Fast";
+}
+
 // The clock: the TV's local time in UK 24-hour form, "07:05".
 export function formatAmbientClock(date: Date): string {
   const pad = (value: number) => (value < 10 ? `0${value}` : String(value));

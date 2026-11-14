@@ -349,6 +349,40 @@ describe("Settings remote navigation and actions", () => {
     expect(hint.textContent).toBe("Each Live Photo moves once, then shows its photo.");
   });
 
+  it("turns Pan portrait photos off with Live Photo motion, and back on without it", () => {
+    mount();
+    controller!.show({ allowBack: true });
+    const motion = byId<HTMLInputElement>("ambient-live-photo-motion");
+    const pan = byId<HTMLInputElement>("ambient-pan-portraits");
+    const speed = byId("ambient-pan-speed-field");
+    expect(pan.checked).toBe(false);
+    expect(speed.hidden).toBe(true);
+
+    pan.focus();
+    pressKey(remoteKeys.enter);
+    expect(pan.checked).toBe(true);
+    expect(speed.hidden).toBe(false);
+
+    motion.focus();
+    pressKey(remoteKeys.enter);
+    expect(motion.checked).toBe(true);
+    expect(pan.checked).toBe(false);
+    expect(pan.getAttribute("aria-disabled")).toBe("true");
+    expect(byId("ambient-pan-portraits-hint").textContent).toBe(
+      "Off while Play Live Photo motion is on."
+    );
+    expect(speed.hidden).toBe(true);
+    pan.focus();
+    pressKey(remoteKeys.enter);
+    expect(pan.checked).toBe(false);
+
+    motion.focus();
+    pressKey(remoteKeys.enter);
+    expect(pan.checked).toBe(true);
+    expect(pan.hasAttribute("aria-disabled")).toBe(false);
+    expect(speed.hidden).toBe(false);
+  });
+
   it("shows Include videos locked when the OLED keep-awake was saved on", () => {
     mount({
       appSettings: {
@@ -453,7 +487,7 @@ describe("Settings remote navigation and actions", () => {
 
     // Every control is reachable with Down, in order.
     const reached: string[] = [];
-    for (let step = 0; step < 10; step += 1) {
+    for (let step = 0; step < 11; step += 1) {
       pressKey(remoteKeys.down);
       reached.push(document.activeElement?.id || "");
     }

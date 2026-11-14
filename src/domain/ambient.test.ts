@@ -21,6 +21,7 @@ describe("ambient settings", () => {
       livePhotoMotion: false,
       livePhotoSound: false,
       panPortraits: false,
+      panSpeed: 80,
       videoSound: false
     });
   });

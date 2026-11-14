@@ -3196,10 +3196,16 @@ button.asset-viewer-faces[aria-pressed="true"]:focus {
 
 .ambient-details {
   margin: 8px 0 0;
-  overflow: hidden;
   color: var(--text-detail);
   font-size: 24px;
   font-weight: 600;
+}
+
+/* The place, then the date and time, each on its own line and cut short on
+   its own. */
+.ambient-details-line {
+  display: block;
+  overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }

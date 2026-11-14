@@ -168,13 +168,31 @@ describe("ambient presentation", () => {
 
     expect(byId("ambient-clock").textContent).toBe("07:05");
     expect(byId("ambient-clock").hidden).toBe(false);
-    expect(byId("ambient-details").textContent).toBe("1 Jun 2024 · Exampleton, Exampleland");
+    // The place on one line, the date and time on the next.
+    expect(Array.from(byId("ambient-details").children).map((line) => line.textContent)).toEqual([
+      "Exampleton, Exampleland",
+      "1 Jun 2024 · 10:00"
+    ]);
     expect(byId("ambient-overlay").getAttribute("data-position")).toBe("0");
 
     await vi.advanceTimersByTimeAsync(ambientOverlayMoveMs);
     expect(byId("ambient-overlay").getAttribute("data-position")).toBe("1");
     await vi.advanceTimersByTimeAsync(ambientOverlayMoveMs * 3);
     expect(byId("ambient-overlay").getAttribute("data-position")).toBe("0");
+  });
+
+  it("leaves the place line out when a photo has no place", async () => {
+    fixture();
+    await screen!.start({
+      quiet: false,
+      settings: settings({ showDetails: true }),
+      source: sequenceSource((i) => asset(`a${i}`, { location: null }))
+    });
+    await flush();
+
+    expect(Array.from(byId("ambient-details").children).map((line) => line.textContent)).toEqual([
+      "1 Jun 2024 · 10:00"
+    ]);
   });
 
   it("hides the clock and details when they are off", async () => {

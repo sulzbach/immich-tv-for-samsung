@@ -20,6 +20,9 @@ export type AmbientSettings = {
   startAfterIdleMinutes: number;
   // 0 is Never.
   stopAfterHours: number;
+  // Open when the TV turns on (ADR 0024): the app opens into ambient mode
+  // each time the TV comes out of standby; off by default.
+  openOnPowerOn: boolean;
 };
 
 export const ambientSources: AmbientSource[] = ["all", "favorites", "recent", "album", "memories"];
@@ -47,7 +50,8 @@ export const defaultAmbientSettings: AmbientSettings = {
   showDetails: false,
   source: "all",
   startAfterIdleMinutes: 0,
-  stopAfterHours: 0
+  stopAfterHours: 0,
+  openOnPowerOn: false
 };
 
 // In order is offered for an album and for Memories only.
@@ -82,7 +86,8 @@ export function normalizeAmbientSettings(value: unknown): AmbientSettings {
     showDetails: stored.showDetails === true,
     source: oneOf(stored.source, ambientSources, defaultAmbientSettings.source),
     startAfterIdleMinutes: oneOf(stored.startAfterIdleMinutes, ambientIdleOptions, 0),
-    stopAfterHours: oneOf(stored.stopAfterHours, ambientStopOptions, 0)
+    stopAfterHours: oneOf(stored.stopAfterHours, ambientStopOptions, 0),
+    openOnPowerOn: stored.openOnPowerOn === true
   };
 }
 

@@ -50,6 +50,10 @@ export type AmbientController = {
   refresh(): void;
   // Starts now with these settings (the Settings form's current choices).
   startNow(settings: AmbientSettings): void;
+  // Starts quietly with the saved settings, as an idle start does, when the
+  // TV turns on (ADR 0024); not while already active. Resolves once ambient
+  // mode shows, or has nothing to show, or was already active.
+  startIdle(startOptions?: { overSplash?: boolean }): Promise<void>;
 };
 
 type Session = {
@@ -109,7 +113,7 @@ export function createAmbientController(options: AmbientControllerOptions): Ambi
 
     if (options.canStartFromIdle()) {
       options.logger?.info("Ambient mode starting after idle.", { minutes });
-      start("idle", options.settings(), documentRef.activeElement, null);
+      void start("idle", options.settings(), documentRef.activeElement, null);
     } else {
       options.logger?.info("Ambient mode idle start skipped: not a browsing screen.", {
         minutes
@@ -145,10 +149,11 @@ export function createAmbientController(options: AmbientControllerOptions): Ambi
     origin: AmbientOrigin,
     settings: AmbientSettings,
     returnFocus: Element | null,
-    deadline: number | null
-  ): void {
+    deadline: number | null,
+    overSplash = false
+  ): Promise<void> {
     if (session) {
-      return;
+      return Promise.resolve();
     }
 
     const id = (startId += 1);
@@ -167,9 +172,10 @@ export function createAmbientController(options: AmbientControllerOptions): Ambi
     session = current;
     options.onStarted();
     scheduleStop(current);
-    void options.screen
+    return options.screen
       .start({
         quiet: origin === "idle",
+        overSplash,
         settings,
         source: options.createSource(settings)
       })
@@ -243,7 +249,7 @@ export function createAmbientController(options: AmbientControllerOptions): Ambi
         return;
       }
 
-      start("manual", resumed.settings, resumed.returnFocus, resumed.deadline);
+      void start("manual", resumed.settings, resumed.returnFocus, resumed.deadline);
       return;
     }
 
@@ -273,7 +279,16 @@ export function createAmbientController(options: AmbientControllerOptions): Ambi
     isActive: () => session !== null,
     refresh: armIdle,
     startNow(settings) {
-      start("manual", settings, documentRef.activeElement, null);
+      void start("manual", settings, documentRef.activeElement, null);
+    },
+    startIdle(startOptions = {}) {
+      return start(
+        "idle",
+        options.settings(),
+        documentRef.activeElement,
+        null,
+        startOptions.overSplash === true
+      );
     }
   };
 }

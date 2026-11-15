@@ -42,6 +42,7 @@ export function createAmbientSection(documentRef: Document): AmbientSection {
   const includeVideosHintText = includeVideosHint.textContent || "";
   const showClock = requireElement<HTMLInputElement>(documentRef, "ambient-show-clock");
   const showDetails = requireElement<HTMLInputElement>(documentRef, "ambient-show-details");
+  const onPowerOn = requireElement<HTMLInputElement>(documentRef, "ambient-on-power-on");
   let album: AmbientSettings["album"] = null;
   // The Include videos choice to bring back when it is unlocked.
   let videosChoice: boolean | null = null;
@@ -130,7 +131,8 @@ export function createAmbientSection(documentRef: Document): AmbientSection {
       showDetails: showDetails.checked,
       source: source.value(),
       startAfterIdleMinutes: Number(idle.value()),
-      stopAfterHours: Number(stop.value())
+      stopAfterHours: Number(stop.value()),
+      openOnPowerOn: onPowerOn.checked
     });
   }
 
@@ -160,6 +162,7 @@ export function createAmbientSection(documentRef: Document): AmbientSection {
       includeVideos.checked = ambient.includeVideos;
       showClock.checked = ambient.showClock;
       showDetails.checked = ambient.showDetails;
+      onPowerOn.checked = ambient.openOnPowerOn;
       setVideosAllowed(!settings.oledKeepAwake);
       updateFields();
     },

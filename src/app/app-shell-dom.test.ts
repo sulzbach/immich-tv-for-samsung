@@ -75,6 +75,25 @@ afterEach(() => {
 });
 
 describe("shell rail navigation", () => {
+  it("covers the app with the splash, holding keys back until it is hidden", () => {
+    const screens = mountShell();
+    shell!.activateDestination("home");
+    shell!.hideSplash();
+    const splash = document.getElementById("splash-screen")!;
+    const before = screens.home.shown;
+
+    shell!.coverWithSplash();
+    expect(splash.hidden).toBe(false);
+    expect(shell!.isSplashVisible()).toBe(true);
+    const key = new KeyboardEvent("keydown", { bubbles: true, cancelable: true, keyCode: 40 });
+    railButton("home").dispatchEvent(key);
+    expect(key.defaultPrevented).toBe(true);
+
+    shell!.hideSplash();
+    expect(splash.hidden).toBe(true);
+    expect(screens.home.shown).toBe(before);
+  });
+
   it("activates destinations with Up/Down and hands focus to content with Right", () => {
     const screens = mountShell();
 

@@ -59,6 +59,9 @@ export type ApplicationShellController = {
     options?: DestinationActivationOptions
   ): void;
   collapseRail(): void;
+  // Puts the splash back up over the app, holding remote keys back as while
+  // loading, until hideSplash or revealApp (ADR 0024).
+  coverWithSplash(): void;
   destroy(): void;
   expandRail(): void;
   focusActiveContent(): void;
@@ -280,6 +283,10 @@ export function mountApplicationShell(
     },
     focusActiveDestinationNav() {
       focusDestinationNav(elements, state.activeDestination);
+    },
+    coverWithSplash() {
+      state.loadingBehindSplash = true;
+      elements.splash.hidden = false;
     },
     hideSplash() {
       state.loadingBehindSplash = false;

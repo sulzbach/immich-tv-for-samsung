@@ -13,7 +13,8 @@ const runtimeFiles = [
   "icon.png",
   "styles/main.css",
   "scripts/install-preset.js",
-  "scripts/main.js"
+  "scripts/main.js",
+  "service/ambient-on-power-on.js"
 ];
 
 const root = process.cwd();

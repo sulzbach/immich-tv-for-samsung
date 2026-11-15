@@ -108,7 +108,7 @@ Beta testers get an **unsigned** package and sign it for their own TV as they in
    npm run tizen:package:unsigned
    ```
 
-   It writes `.tizen/release/ImmichTV-<version>-unsigned.wgt`: the same 9 runtime files as the signed package, without signature files.
+   It writes `.tizen/release/ImmichTV-<version>-unsigned.wgt`: the same 10 runtime files as the signed package, without signature files.
 3. Inspect it and take its checksum:
 
    ```sh

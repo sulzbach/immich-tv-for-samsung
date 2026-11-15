@@ -35,6 +35,29 @@ export default tseslint.config(
     }
   },
   {
+    // The bundled Tizen web service (ADR 0024) runs in the TV's Node runtime
+    // as CommonJS, with the TV's `tizen` global, and is shipped as written:
+    // plain ES5 that older TVs' Node versions also run, so its `catch`
+    // clauses keep a binding they don't always use.
+    files: ["service/**/*.js"],
+    languageOptions: {
+      sourceType: "commonjs",
+      globals: {
+        clearInterval: "readonly",
+        module: "writable",
+        process: "readonly",
+        require: "readonly",
+        setInterval: "readonly",
+        setTimeout: "readonly",
+        tizen: "readonly"
+      }
+    },
+    rules: {
+      "@typescript-eslint/no-require-imports": "off",
+      "@typescript-eslint/no-unused-vars": ["error", { caughtErrors: "none" }]
+    }
+  },
+  {
     // Shipped runtime code must run on Tizen 5.0 / Chromium 63 (the
     // package.json browserslist target). esbuild only transpiles syntax, so
     // this rule catches unsupported globals and ES built-ins. DOM members

@@ -3130,6 +3130,16 @@ button.asset-viewer-faces[aria-pressed="true"]:focus {
   display: none;
 }
 
+/* Opened as the TV turned on: see-through over the splash until the first
+   picture has faded in (its layer is black behind it), without overlays. */
+.ambient-screen[data-over-splash] {
+  background: transparent;
+}
+
+.ambient-screen[data-over-splash] .ambient-overlay {
+  visibility: hidden;
+}
+
 .ambient-layer,
 .ambient-video {
   position: absolute;

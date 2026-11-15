@@ -9,8 +9,18 @@
 // has turned on when the API says "on" after it said something else, or after
 // no "on" answer for longer than a few checks would take.
 //
+// On power-on it asks the app for ambient mode two ways, with one nonce: a
+// message on the app's message port, which reaches the app while it runs,
+// even when the TV has already brought it back to the front by itself (the
+// TV tells such an app nothing of a new launch request), and a launch
+// request, which opens the app or brings it to the front. The TV brings the
+// app back before this service's next check sees the power-on, so the app,
+// back in front, asks on this service's message port whether the TV is just
+// turning on; the answer is the same request, or "none".
+//
 // The app starts this service and passes its setting in the launch request
-// (data "config": {"enabled": bool}); it opens no port. Plain ES5 and Node
+// (data "config": {"enabled": bool}). It opens no network port; message
+// ports are local to the TV, between this app and its service. Plain ES5 and Node
 // built-ins only: the TV's service runtime is Node 16 on 2023 models, older
 // on earlier ones.
 "use strict";
@@ -18,6 +28,8 @@
 var http = require("http");
 
 var appId = "imchTV0001.ImmichTV";
+var appPortName = "immich-tv-ambient";
+var servicePortName = "immich-tv-ambient-service";
 var checkMs = 2000;
 // Longer than this without an "on" answer, and the TV was not on meanwhile.
 var offAfterMs = 20000;
@@ -62,10 +74,24 @@ function powerState(done) {
   });
 }
 
+function sendToApp(items) {
+  try {
+    tizen.messageport.requestRemoteMessagePort(appId, appPortName).sendMessage(items);
+  } catch (error) {
+    // The app isn't running: the launch request opens it.
+  }
+}
+
 function openAmbient() {
+  var nonce = String(Date.now());
+
+  sendToApp([
+    { key: "action", value: "ambient" },
+    { key: "nonce", value: nonce }
+  ]);
   try {
     var request = new tizen.ApplicationControlData("immich-tv-request", [
-      JSON.stringify({ action: "ambient", nonce: String(Date.now()) })
+      JSON.stringify({ action: "ambient", nonce: nonce })
     ]);
     tizen.application.launchAppControl(
       new tizen.ApplicationControl(
@@ -98,7 +124,7 @@ function check() {
       return;
     }
 
-    var turnedOn = lastOnAt !== null && (lastAnswerOff || now - lastOnAt > offAfterMs);
+    var turnedOn = turningOn(now);
 
     lastOnAt = now;
     lastAnswerOff = false;
@@ -106,6 +132,47 @@ function check() {
       openAmbient();
     }
   });
+}
+
+// Whether the TV has come out of standby since the last "on" answer.
+function turningOn(now) {
+  return lastOnAt !== null && (lastAnswerOff || now - lastOnAt > offAfterMs);
+}
+
+// The app, back in front, asks whether the TV is just turning on. The TV
+// answers "on" by now; what this service saw before says whether it was in
+// standby.
+function answerApp() {
+  powerState(function (state) {
+    var now = Date.now();
+
+    if (state === "on" && config.enabled && turningOn(now)) {
+      lastOnAt = now;
+      lastAnswerOff = false;
+      openAmbient();
+      return;
+    }
+
+    sendToApp([{ key: "action", value: "none" }]);
+  });
+}
+
+function listenToApp() {
+  try {
+    tizen.messageport
+      .requestLocalMessagePort(servicePortName)
+      .addMessagePortListener(function (data) {
+        if (
+          (data || []).some(function (item) {
+            return item.key === "query";
+          })
+        ) {
+          answerApp();
+        }
+      });
+  } catch (error) {
+    // The app's question then goes unanswered; it stops waiting by itself.
+  }
 }
 
 function readConfig() {
@@ -125,6 +192,7 @@ function readConfig() {
 
 module.exports.onStart = function () {
   readConfig();
+  listenToApp();
   timer = setInterval(check, checkMs);
   check();
 };

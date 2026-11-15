@@ -86,6 +86,9 @@ export type Application = {
   start(): void;
 };
 
+// The longest the splash waits, back in front, for the ambient service to say
+// whether the TV is turning on (ADR 0024); it answers at once when running.
+const serviceAnswerLimitMs = 3000;
 // The longest the splash waits for Home's rails at launch (see
 // showHomeBehindSplash).
 const homeRevealLimitMs = 10000;
@@ -96,6 +99,13 @@ export function composeApplication(dependencies: ApplicationDependencies): Appli
   const documentRef = dependencies.documentRef || document;
   let destroyed = false;
   let route: AppRoute | null = null;
+  // Ambient mode opening as the TV turned on, until it shows (ADR 0024).
+  let ambientCover: Promise<void> | null = null;
+  // The splash went up as the app went to the background (ADR 0024).
+  let coveredWhileHidden = false;
+  // Back in front, waiting with the splash up for the service to say whether
+  // the TV is turning on (ADR 0024).
+  let serviceAnswerTimer: number | null = null;
 
   const exitConfirmation = mountExitConfirmation({
     documentRef,
@@ -461,23 +471,95 @@ export function composeApplication(dependencies: ApplicationDependencies): Appli
     }
   }
 
-  // Starts ambient mode when the service opened the app for it.
-  function actOnAmbientRequest(): void {
-    if (dependencies.ambientOnPowerOn && dependencies.ambientOnPowerOn.takeRequest()) {
-      if (albumService.loadSettings()) {
-        logger.info("Ambient mode requested as the TV turned on.");
-        ambient.startIdle();
+  // Opens ambient mode as the TV turned on (ADR 0024). The splash covers the
+  // app until ambient mode shows, so the first picture fades in over the
+  // splash rather than after a glimpse of the menu. `splashIsCover`: the
+  // splash is up only to cover the app, not for loading at launch.
+  function startAmbientOverSplash(splashIsCover: boolean): void {
+    if (!albumService.loadSettings()) {
+      if (splashIsCover) {
+        shell.hideSplash();
       }
+      return;
     }
+
+    // At launch the splash is already up for Home, which takes it down.
+    const launching = shell.isSplashVisible() && !splashIsCover;
+
+    logger.info("Ambient mode requested as the TV turned on.");
+    shell.coverWithSplash();
+    const cover: Promise<void> = ambient.startIdle({ overSplash: true }).then(() => {
+      if (ambientCover === cover) {
+        ambientCover = null;
+        if (!launching) {
+          shell.hideSplash();
+        }
+      }
+    });
+    ambientCover = cover;
   }
+
+  // Stops waiting for the service's answer; whether it was being waited for.
+  function stopWaitingForService(): boolean {
+    if (serviceAnswerTimer === null) {
+      return false;
+    }
+
+    documentRef.defaultView?.clearTimeout(serviceAnswerTimer);
+    serviceAnswerTimer = null;
+    return true;
+  }
+
+  const stopServiceListening = dependencies.ambientOnPowerOn
+    ? dependencies.ambientOnPowerOn.listen((message) => {
+        const waited = stopWaitingForService();
+
+        if (message === "ambient") {
+          startAmbientOverSplash(waited || coveredWhileHidden);
+        } else if (waited && !ambientCover) {
+          shell.hideSplash();
+        }
+      })
+    : () => undefined;
 
   lifecycle.onVisibilityChange((visibility) => {
     if (visibility === "hidden") {
       collectionScreen.suspendPlayback();
+      stopWaitingForService();
+      // The TV turning on brings the app back for ambient mode: with the
+      // splash up now, the screen it left never shows first.
+      if (
+        readEffectiveAmbientSettings(settingsStore.load()).openOnPowerOn &&
+        !ambient.isActive() &&
+        !shell.isSplashVisible()
+      ) {
+        shell.coverWithSplash();
+        coveredWhileHidden = true;
+      }
       return;
     }
 
-    actOnAmbientRequest();
+    const covered = coveredWhileHidden;
+    const onPowerOn = dependencies.ambientOnPowerOn;
+
+    coveredWhileHidden = false;
+    if (onPowerOn && onPowerOn.takeRequest()) {
+      startAmbientOverSplash(covered);
+    } else if (covered && !ambientCover) {
+      // The TV brings the app back by itself as it turns on, before the
+      // service has seen it: ask, and keep the splash up for the answer.
+      if (onPowerOn && onPowerOn.askIfTurningOn()) {
+        serviceAnswerTimer =
+          documentRef.defaultView?.setTimeout(() => {
+            serviceAnswerTimer = null;
+            if (!ambientCover) {
+              shell.hideSplash();
+            }
+          }, serviceAnswerLimitMs) ?? null;
+      } else {
+        shell.hideSplash();
+      }
+    }
 
     // Playback stays paused on return. Keep a visible focus target if the TV
     // dropped focus while the app was in the background.
@@ -599,6 +681,14 @@ export function composeApplication(dependencies: ApplicationDependencies): Appli
     collectionScreen.refreshPhotos();
   }
 
+  function isHomeRoute(candidate: AppRoute | null): boolean {
+    return (
+      candidate !== null &&
+      ((candidate.kind === "destination" && candidate.destination === "home") ||
+        (candidate.kind === "ambient" && isHomeRoute(candidate.returnTo)))
+    );
+  }
+
   // At launch, Home loads behind the splash and appears once every rail has
   // loaded or failed, so it opens complete instead of filling in. A server that
   // stalls rather than refusing would keep rails waiting for their request
@@ -607,8 +697,16 @@ export function composeApplication(dependencies: ApplicationDependencies): Appli
   function showHomeBehindSplash(): void {
     let revealed = false;
     const reveal = () => {
-      // Only Home, and only once: by now something else may be showing.
-      if (revealed || destroyed || route?.kind !== "destination" || route.destination !== "home") {
+      // Only Home (ambient mode may have opened over it), and only once: by
+      // now something else may be showing.
+      if (revealed || destroyed || !isHomeRoute(route)) {
+        return;
+      }
+
+      // Ambient mode opening as the TV turned on is see-through over the
+      // splash until its first picture is in: Home must not show through.
+      if (ambientCover) {
+        void ambientCover.then(reveal);
         return;
       }
 
@@ -762,6 +860,8 @@ export function composeApplication(dependencies: ApplicationDependencies): Appli
   return {
     destroy() {
       destroyed = true;
+      stopServiceListening();
+      stopWaitingForService();
       ambient.destroy();
       ambientScreen.destroy();
       exitConfirmation.destroy();
@@ -793,7 +893,9 @@ export function composeApplication(dependencies: ApplicationDependencies): Appli
 
       logger.info("Immich TV app mounted.", { route });
       configureAmbientOnPowerOn();
-      actOnAmbientRequest();
+      if (dependencies.ambientOnPowerOn && dependencies.ambientOnPowerOn.takeRequest()) {
+        startAmbientOverSplash(false);
+      }
     }
   };
 }

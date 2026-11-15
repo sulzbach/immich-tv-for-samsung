@@ -33,20 +33,34 @@ Spike on a 2023 UN50CU8000 (Tizen 8.0, developer certificate, wired):
 
 So a service can't tell "the TV is idle on its Home screen" from "an app the service doesn't know is in front". The only way would be a hand-kept list of store IDs. That breaks for every new app, differs between TVs and regions, and isn't acceptable for other Immich users. A first version built on "idle on Home for N minutes" was dropped for that reason.
 
-The TV's power state, on the other hand, is reliable.
+The TV's power state, on the other hand, is reliable: the API answers `standby` while the TV is off, then `on`.
+
+### What was measured turning the TV on
+
+With the first power-on version on the TV, a quick power off and on left Immich TV on its menu, and a longer one first showed the menu, then ambient mode. Diagnostics from the service and the app (a temporary local log, not kept) showed, on each power-on:
+
+- The TV brings back by itself whatever was in front before standby, Immich TV included: about 1.4 s **before** the service's next check saw `on`. The app, back in front, found no request yet.
+- The service's `launchAppControl` then succeeded, but an app already in front got no sign of it: no visibility change and no window `appcontrol` event. That stayed so with an `app-control` declared in `config.xml` for the service's operation, with `reload="disable"`, as Samsung documents for Smart Hub Preview deep links. The request was lost.
+- A message from the service on the app's local message port (Message Port API, no privilege) reached the running app, in front or not, in about 0.2 s.
+- In a quiet start, ambient mode shows only once its first picture is ready. Meanwhile the splash had gone as Home loaded, so the menu showed in between.
+
+Which app the TV brings back depends on how long it was off: after a short standby, the one in front before; after a longer one, Smart Hub, which may open Samsung TV Plus. After a restart, or when the TV closes background apps to free memory, the app and its service are gone until the app is opened again.
 
 ## Decision
 
 - **Open when the TV turns on** (Settings → Ambient, off by default). Each time the TV comes out of standby, Immich TV opens into ambient mode. It takes the place of Samsung TV Plus or the Home screen, and any key stops it.
-- **A bundled web service** (`service/ambient-on-power-on.js`, `imchTV0001.ImmichAmbientService`) reads `PowerState` from `127.0.0.1:8001/api/v2/` every 2 seconds. The TV has turned on when the answer is `on` after another state, or after more than 20 seconds without an `on` answer. In standby the service's timers may not run, and the API may not answer. The service then opens the app with `launchAppControl`, carrying `{"action":"ambient","nonce":…}`. It opens no port.
-- **The app starts the service** on launch and whenever Settings are saved, passing `{"enabled"}` in the launch request (`src/platform/tizen/ambient-on-power-on.ts`). When the app is opened, or brought to the front, with a request it hasn't acted on (its nonce), it starts ambient mode quietly with the saved settings (`AmbientController.startIdle`).
-- `config.xml` declares the service, `http://tizen.org/feature/web.service`, `background-support="enable"` and the public `http://tizen.org/privilege/application.launch`. Packaging stages ten runtime files.
+- **A bundled web service** (`service/ambient-on-power-on.js`, `imchTV0001.ImmichAmbientService`) reads `PowerState` from `127.0.0.1:8001/api/v2/` every 2 seconds. The TV has turned on when the answer is `on` after another state, or after more than 20 seconds without an `on` answer, since in standby the service's timers may not run and the API may not answer. It then asks for ambient mode two ways, with one nonce: a message on the app's message port (`immich-tv-ambient`), which reaches the running app even in front, and `launchAppControl` with `{"action":"ambient","nonce":…}`, which opens the app or brings it to the front. The app acts on each nonce once.
+- **The app asks back.** When it comes to the front with the option on, it keeps the splash up and asks on the service's port (`immich-tv-ambient-service`) whether the TV is just turning on. The service answers from what it saw last (`standby`, or no `on` for 20 seconds): with the same request, or with `none`, and the splash goes at once. With no answer within 3 seconds (no service), it goes anyway.
+- **Splash first, then the first picture.** The splash covers the app as it goes to the background with the option on, so the TV never brings back the menu first, and while ambient mode opens. Ambient mode starts quietly and stays see-through over the splash (`data-over-splash`) until its first picture has faded in, so the splash fades straight into the picture. Remote keys are held back while the splash covers the app.
+- **The app starts the service** on launch and whenever Settings are saved, passing `{"enabled"}` in the launch request (`src/platform/tizen/ambient-on-power-on.ts`), and starts ambient mode with the saved settings (`AmbientController.startIdle`).
+- `config.xml` declares the service, `http://tizen.org/feature/web.service`, `background-support="enable"` and the public `http://tizen.org/privilege/application.launch`. The Message Port API needs no privilege. Packaging stages ten runtime files.
 
 ## Consequences
 
 - It opens every time the TV turns on, whatever the TV would have shown: Samsung TV Plus, Home, Live TV, or an HDMI device that turned the TV on over HDMI-CEC. A key press leaves ambient mode into Immich TV. That is why it is off by default.
+- With the option on, coming back to Immich TV from another app shows the splash for as long as the service takes to answer: one local API request, at most 3 seconds.
 - It does nothing while the TV stays on. "Idle on Home" can't be detected (see Context), so ambient mode over an idle Home screen is out of reach.
-- The service runs only once the app has launched it since the TV last powered up from cold (unplugged). Standby keeps it running. "Autorun Last App" on the TV covers a cold start.
+- The service runs only once the app has launched it since the TV last started from cold (restart or unplugged), or since the TV closed the app to free memory. Standby keeps it running. "Autorun Last App" on the TV covers a cold start.
 - If the local API stops answering for more than 20 seconds while the TV is on, the next answer counts as a power-on. That has not been seen.
-- The TV's local API on port 8001 is undocumented by Samsung and may change with firmware. When it stops answering, the service does nothing.
+- The TV's local API on port 8001 is undocumented by Samsung and may change with firmware. When it stops answering, the service does nothing. The service and the app open no network port.
 - Samsung documents TV web services as partner-level. On the test TV a developer certificate was enough. A store build would need Samsung's review of the service.

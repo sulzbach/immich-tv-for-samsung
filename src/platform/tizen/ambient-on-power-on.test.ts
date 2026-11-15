@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
-import { ambientOnPowerOnServiceId, createAmbientOnPowerOn } from "./ambient-on-power-on";
+import {
+  ambientAppPortName,
+  ambientOnPowerOnServiceId,
+  ambientServicePortName,
+  createAmbientOnPowerOn
+} from "./ambient-on-power-on";
 
 const logger = { error: vi.fn(), info: vi.fn(), warn: vi.fn() };
 
@@ -22,6 +27,13 @@ class ControlData {
 
 function tvWindow(requestData: { key: string; value: string[] }[] = []) {
   const launchAppControl = vi.fn();
+  const port = {
+    listener: null as ((items: { key: string; value: string }[]) => void) | null,
+    name: "",
+    removed: false
+  };
+  const sent: { appId: string; items: unknown; name: string }[] = [];
+  let remoteFails = false;
   let data = requestData;
   const windowRef = {
     tizen: {
@@ -33,12 +45,41 @@ function tvWindow(requestData: { key: string; value: string[] }[] = []) {
           getRequestedAppControl: () => ({ appControl: { data } })
         }),
         launchAppControl
+      },
+      messageport: {
+        requestLocalMessagePort(name: string) {
+          port.name = name;
+          return {
+            addMessagePortListener(listener: (items: { key: string; value: string }[]) => void) {
+              port.listener = listener;
+              return 1;
+            },
+            removeMessagePortListener() {
+              port.removed = true;
+            }
+          };
+        },
+        requestRemoteMessagePort(appId: string, name: string) {
+          if (remoteFails) {
+            throw new Error("NotFoundError");
+          }
+          return {
+            sendMessage(items: unknown) {
+              sent.push({ appId, items, name });
+            }
+          };
+        }
       }
     }
   } as unknown as Window;
 
   return {
+    failRemote() {
+      remoteFails = true;
+    },
     launchAppControl,
+    port,
+    sent,
     setRequest(next: { key: string; value: string[] }[]) {
       data = next;
     },
@@ -85,5 +126,51 @@ describe("ambient when the TV turns on", () => {
     const desktop = createAmbientOnPowerOn({} as Window, logger);
     expect(desktop.takeRequest()).toBe(false);
     expect(() => desktop.configure({ enabled: true })).not.toThrow();
+  });
+
+  it("acts on the service's message once per nonce, shared with the launch request", () => {
+    const tv = tvWindow(request("7"));
+    const onPowerOn = createAmbientOnPowerOn(tv.windowRef, logger);
+    const heard = vi.fn();
+    const stop = onPowerOn.listen(heard);
+    const send = (items: { key: string; value: string }[]) => tv.port.listener!(items);
+
+    send([
+      { key: "action", value: "ambient" },
+      { key: "nonce", value: "7" }
+    ]);
+    expect(heard).toHaveBeenCalledWith("ambient");
+    // The launch request with the same nonce then arrives: already acted on.
+    expect(onPowerOn.takeRequest()).toBe(false);
+    send([
+      { key: "action", value: "ambient" },
+      { key: "nonce", value: "7" }
+    ]);
+    expect(heard).toHaveBeenCalledTimes(1);
+
+    send([{ key: "action", value: "none" }]);
+    expect(heard).toHaveBeenLastCalledWith("none");
+    expect(tv.port.name).toBe(ambientAppPortName);
+
+    stop();
+    expect(tv.port.removed).toBe(true);
+  });
+
+  it("asks the service on its port whether the TV is turning on", () => {
+    const tv = tvWindow();
+    const onPowerOn = createAmbientOnPowerOn(tv.windowRef, logger);
+
+    expect(onPowerOn.askIfTurningOn()).toBe(true);
+    expect(tv.sent).toEqual([
+      {
+        appId: ambientOnPowerOnServiceId,
+        items: [{ key: "query", value: "turning-on" }],
+        name: ambientServicePortName
+      }
+    ]);
+
+    tv.failRemote();
+    expect(onPowerOn.askIfTurningOn()).toBe(false);
+    expect(createAmbientOnPowerOn({} as Window, logger).askIfTurningOn()).toBe(false);
   });
 });

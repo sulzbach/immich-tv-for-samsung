@@ -36,6 +36,10 @@ type AmbientScreenOptions = {
 export type AmbientStartOptions = {
   // Started by the idle timer: show nothing unless there is a picture.
   quiet: boolean;
+  // Opened as the TV turned on (ADR 0024): the screen stays see-through over
+  // the splash until its first picture has faded in, so the splash turns
+  // straight into the picture.
+  overSplash?: boolean;
   settings: AmbientSettings;
   source: AmbientAssetSource;
 };
@@ -138,6 +142,7 @@ export function mountAmbientScreen(options: AmbientScreenOptions): AmbientScreen
     player = null;
     timers.clearAll();
     root.hidden = true;
+    root.removeAttribute("data-over-splash");
     setMessage("");
     details.textContent = "";
     hold.set(false);
@@ -190,6 +195,10 @@ export function mountAmbientScreen(options: AmbientScreenOptions): AmbientScreen
       settings = start.settings;
       const id = startId;
 
+      if (start.overSplash) {
+        root.setAttribute("data-over-splash", "true");
+      }
+
       if (!start.quiet) {
         show();
       }
@@ -207,6 +216,7 @@ export function mountAmbientScreen(options: AmbientScreenOptions): AmbientScreen
           elements: { layers, video },
           intervalMs: start.settings.intervalSeconds * 1000,
           onShow(asset) {
+            root.removeAttribute("data-over-splash");
             showDetails(asset);
           },
           onState(state) {

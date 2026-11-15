@@ -440,6 +440,33 @@ describe("ambient errors", () => {
     expect(byId("ambient-screen").hidden).toBe(false);
     expect(f.visible()).toEqual(["blob:a0"]);
   });
+
+  it("stays see-through over the splash until its first picture has faded in", async () => {
+    const f = fixture();
+    const root = byId("ambient-screen");
+    void screen!.start({
+      overSplash: true,
+      quiet: true,
+      settings: settings(),
+      source: sequenceSource()
+    });
+    expect(root.getAttribute("data-over-splash")).toBe("true");
+    await flush();
+    expect(root.hidden).toBe(false);
+    expect(root.getAttribute("data-over-splash")).toBe("true");
+
+    await f.endFade();
+    expect(root.hasAttribute("data-over-splash")).toBe(false);
+
+    void screen!.start({
+      overSplash: true,
+      quiet: true,
+      settings: settings(),
+      source: sequenceSource()
+    });
+    screen!.stop();
+    expect(root.hasAttribute("data-over-splash")).toBe(false);
+  });
 });
 
 describe("leaving ambient mode", () => {
